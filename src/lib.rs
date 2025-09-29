@@ -1,9 +1,13 @@
 #![no_std]
 
+mod stages;
+
+use stages::Stages;
+
 use asr::{
     future::{next_tick, retry},
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
-    itoa, ryu,
+    ryu,
     settings::{gui::Title, Gui},
     time::Duration,
     timer::{self},
@@ -16,7 +20,7 @@ asr::panic_handler!();
 async fn main() {
     let mut settings = Settings::register();
 
-    asr::print_message("PACMAN REPAC TWOOOOOOO loaded");
+    asr::print_message("PACMAN REPAC TWOOOOOOO autosplitter loaded");
 
     loop {
         let process = Process::wait_attach("PAC-MAN WORLD 2 Re-PAC.exe").await;
@@ -39,11 +43,11 @@ async fn main() {
                         watchers.time_trial_igt.pair.unwrap_or(Pair::default());
                     let time_trial_state_pair =
                         watchers.time_trial_state.pair.unwrap_or(Pair::default());
-                    let mut buffer_int = itoa::Buffer::new();
+                    //let mut buffer_int = itoa::Buffer::new();
                     let mut buffer_float = ryu::Buffer::new();
 
                     // vars display
-                    asr::timer::set_variable("LevelEnum", buffer_int.format(level));
+                    asr::timer::set_variable("LevelEnum", level.to_string());
                     asr::timer::set_variable(
                         "Time Trial Timer",
                         buffer_float.format(time_trial_igt_pair.current),
@@ -100,7 +104,9 @@ async fn main() {
                                 timer::split();
                             }
 
-                            if time_trial_state_pair.current == TimeTrialState::None {
+                            if time_trial_state_pair.current == TimeTrialState::None
+                                && time_trial_igt_pair.current != time_trial_igt_pair.old
+                            {
                                 timer::reset();
                             }
                         }
@@ -167,7 +173,7 @@ enum TimeTrialState {
 #[derive(Default)]
 struct Watchers {
     is_loading: Watcher<bool>,
-    level_id: Watcher<u32>,
+    level_id: Watcher<Stages>,
     time_trial_igt: Watcher<f64>,
     time_trial_state: Watcher<TimeTrialState>,
 }
@@ -215,12 +221,11 @@ fn update_loop(game: &Process, addresses: &Memory, watchers: &mut Watchers) {
             .unwrap_or_default(),
     );
 
-    watchers.level_id.update_infallible(
-        addresses
-            .level_id
-            .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-            .unwrap_or_default(),
-    );
+    let level_id = addresses
+        .level_id
+        .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    watchers.level_id.update_infallible(level_id.into());
 
     watchers.time_trial_igt.update_infallible(
         addresses
@@ -257,11 +262,13 @@ fn start(watchers: &Watchers, settings: &Settings) -> bool {
         return false;
     };
 
-    if !level_pair.changed() {
+    if level_pair.current == level_pair.old {
         return false;
     }
 
-    level_pair.current == 6 && level_pair.old == 4 && settings.start_new_game
+    level_pair.current == Stages::Movie
+        && level_pair.old == Stages::Title
+        && settings.start_new_game
 }
 
 fn split(watchers: &Watchers, settings: &Settings) -> bool {
@@ -271,12 +278,12 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
         return false;
     };
 
-    if !level_pair.changed() {
+    if level_pair.current == level_pair.old {
         return false;
     }
 
     match level_pair.current {
-        9 => true && settings.split_on_level_complete,
+        Stages::StageSelect => true && settings.split_on_level_complete,
         _ => false,
     }
 }
