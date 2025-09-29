@@ -18,6 +18,7 @@ dependencies = [
  "bytemuck",
  "itoa",
  "memchr",
+ "ryu",
  "time",
  "wasi",
 ]
@@ -117,6 +118,12 @@ checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "ryu"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
 name = "syn"
