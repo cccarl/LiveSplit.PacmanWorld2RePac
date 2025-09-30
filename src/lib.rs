@@ -3,7 +3,6 @@
 mod memory;
 mod stages;
 
-use stages::Stages;
 use asr::{
     future::{next_tick, retry},
     settings::{gui::Title, Gui},
@@ -13,6 +12,7 @@ use asr::{
     Process,
 };
 use memory::{update_watchers, Memory};
+use stages::Stages;
 
 asr::async_main!(stable);
 asr::panic_handler!();
@@ -51,6 +51,13 @@ async fn main() {
                         .time_trial_bonus_time
                         .pair
                         .unwrap_or(Pair::default());
+                    let igt_address = watchers.igt_list_pointer.pair.unwrap_or(Pair::default());
+                    let save_slot_pair = watchers.save_slot.pair.unwrap_or(Pair::default());
+                    let save_data_address =
+                        watchers.save_data_pointer.pair.unwrap_or(Pair::default());
+                    let igt_hours = watchers.save_data_hour.pair.unwrap_or(Pair::default());
+                    let igt_minutes = watchers.save_data_minute.pair.unwrap_or(Pair::default());
+                    let igt_seconds = watchers.save_data_second.pair.unwrap_or(Pair::default());
 
                     // vars display
                     asr::timer::set_variable("LevelEnum", level.to_string());
@@ -75,15 +82,9 @@ async fn main() {
                         "Time Trial Total Bonus",
                         time_trial_bonus_pair.current,
                     );
-                    if let Some(is_loading) = is_loading(&watchers, &settings) {
-                        if is_loading {
-                            timer::pause_game_time();
-                            asr::timer::set_variable("Loading", "True");
-                        } else {
-                            timer::resume_game_time();
-                            asr::timer::set_variable("Loading", "False");
-                        }
-                    }
+                    asr::timer::set_variable_int("IGT List Address", igt_address.current);
+                    asr::timer::set_variable_int("Save Data Address", save_data_address.current);
+                    asr::timer::set_variable_int("Save Slot", save_slot_pair.current);
 
                     match settings.timer_mode.current {
                         TimerMode::FullGame => {
@@ -97,8 +98,34 @@ async fn main() {
                             if split(&watchers, &settings) {
                                 timer::split();
                             }
+
+                            if settings.estimate_igt {
+                                if let Some(is_loading) = is_loading(&watchers, &settings) {
+                                    if is_loading {
+                                        timer::pause_game_time();
+                                        asr::timer::set_variable("Loading", "True");
+                                    } else {
+                                        timer::resume_game_time();
+                                        asr::timer::set_variable("Loading", "False");
+                                    }
+                                }
+                            } else {
+                                timer::pause_game_time();
+                            }
+
+                            if igt_hours.changed() || igt_minutes.changed() || igt_seconds.changed()
+                            {
+                                asr::timer::set_game_time(Duration::seconds(
+                                    (igt_hours.current * 3600
+                                        + igt_minutes.current * 60
+                                        + igt_seconds.current)
+                                        .into(),
+                                ));
+                            }
                         }
                         TimerMode::TimeTrial => {
+                            timer::pause_game_time();
+
                             if settings.time_trial_discount_bonus {
                                 timer::set_game_time(Duration::seconds_f64(
                                     time_trial_igt_pair.current
@@ -175,12 +202,16 @@ struct Settings {
     #[default = true]
     reset_on_file_creation: bool,
 
-    /// Time Trial
-    _time_trial_title: Title,
+    /// Misc
+    _misc_title: Title,
 
     /// Discount Bonus Time
     #[default = true]
     time_trial_discount_bonus: bool,
+
+    /// Estimate IGT on Save File
+    #[default = false]
+    estimate_igt: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -203,6 +234,12 @@ struct Watchers {
     time_trial_state: Watcher<TimeTrialState>,
     time_trial_bonus_list_pointer: Watcher<u64>,
     time_trial_bonus_time: Watcher<u32>, // calculated bonus form the unity list with each timer
+    igt_list_pointer: Watcher<u64>,
+    save_data_pointer: Watcher<u64>,
+    save_slot: Watcher<i32>,
+    save_data_hour: Watcher<i32>,
+    save_data_minute: Watcher<i32>,
+    save_data_second: Watcher<i32>,
 }
 
 fn is_loading(watchers: &Watchers, _settings: &Settings) -> Option<bool> {
