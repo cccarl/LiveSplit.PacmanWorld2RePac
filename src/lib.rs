@@ -51,13 +51,14 @@ async fn main() {
                         .time_trial_bonus_time
                         .pair
                         .unwrap_or(Pair::default());
-                    let igt_address = watchers.igt_list_pointer.pair.unwrap_or(Pair::default());
+                    let igt_address = watchers.timers_list_pointer.pair.unwrap_or(Pair::default());
                     let save_slot_pair = watchers.save_slot.pair.unwrap_or(Pair::default());
                     let save_data_address =
                         watchers.save_data_pointer.pair.unwrap_or(Pair::default());
                     let igt_hours = watchers.save_data_hour.pair.unwrap_or(Pair::default());
                     let igt_minutes = watchers.save_data_minute.pair.unwrap_or(Pair::default());
                     let igt_seconds = watchers.save_data_second.pair.unwrap_or(Pair::default());
+                    let curr_timer_pair = watchers.current_timer.pair.unwrap_or(Pair::default());
 
                     // vars display
                     asr::timer::set_variable("LevelEnum", level.to_string());
@@ -88,6 +89,16 @@ async fn main() {
 
                     match settings.timer_mode.current {
                         TimerMode::FullGame => {
+
+                            asr::timer::pause_game_time();
+                            asr::timer::set_game_time(Duration::seconds_f64(
+                                curr_timer_pair.current
+                                    + (igt_hours.current * 3600
+                                        + igt_minutes.current * 60
+                                        + igt_seconds.current)
+                                        as f64,
+                            ));
+
                             if start(&watchers, &settings) {
                                 if settings.reset_on_file_creation {
                                     timer::reset();
@@ -97,30 +108,6 @@ async fn main() {
 
                             if split(&watchers, &settings) {
                                 timer::split();
-                            }
-
-                            if settings.estimate_igt {
-                                if let Some(is_loading) = is_loading(&watchers, &settings) {
-                                    if is_loading {
-                                        timer::pause_game_time();
-                                        asr::timer::set_variable("Loading", "True");
-                                    } else {
-                                        timer::resume_game_time();
-                                        asr::timer::set_variable("Loading", "False");
-                                    }
-                                }
-                            } else {
-                                timer::pause_game_time();
-                            }
-
-                            if igt_hours.changed() || igt_minutes.changed() || igt_seconds.changed()
-                            {
-                                asr::timer::set_game_time(Duration::seconds(
-                                    (igt_hours.current * 3600
-                                        + igt_minutes.current * 60
-                                        + igt_seconds.current)
-                                        .into(),
-                                ));
                             }
                         }
                         TimerMode::TimeTrial => {
@@ -208,10 +195,6 @@ struct Settings {
     /// Discount Bonus Time
     #[default = true]
     time_trial_discount_bonus: bool,
-
-    /// Estimate IGT on Save File
-    #[default = false]
-    estimate_igt: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -234,14 +217,17 @@ struct Watchers {
     time_trial_state: Watcher<TimeTrialState>,
     time_trial_bonus_list_pointer: Watcher<u64>,
     time_trial_bonus_time: Watcher<u32>, // calculated bonus form the unity list with each timer
-    igt_list_pointer: Watcher<u64>,
+    timers_list_pointer: Watcher<u64>,
     save_data_pointer: Watcher<u64>,
     save_slot: Watcher<i32>,
     save_data_hour: Watcher<i32>,
     save_data_minute: Watcher<i32>,
     save_data_second: Watcher<i32>,
+    current_timer: Watcher<f64>,
 }
 
+
+// TODO use for load remover if we decide to time the game with it
 fn is_loading(watchers: &Watchers, _settings: &Settings) -> Option<bool> {
     Some(watchers.is_loading.pair?.current)
 }

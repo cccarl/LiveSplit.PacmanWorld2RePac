@@ -14,6 +14,7 @@ pub struct Memory {
     time_trial_bonus_list_pointer: UnityPointer<2>,
     save_data_manager_pointer: UnityPointer<2>,
     save_slot: UnityPointer<2>,
+    timer_list_pointer: UnityPointer<2>,
 }
 
 impl Memory {
@@ -29,15 +30,15 @@ impl Memory {
         let time_trial_bonus_list_pointer =
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_bonusTimeList"]);
 
-        // old attempt at reading the igt
-        //let timer_list_pointer =
-        //    UnityPointer::new("PlayTimeManager", 1, &["s_sInstance", "m_timerList"]);
-
         let save_data_manager_pointer =
             UnityPointer::new("SaveDataManager", 1, &["s_sInstance", "m_implement"]);
 
         let save_slot =
             UnityPointer::new("GameStateManager", 1, &["s_sInstance", "m_currentSaveSlot"]);
+
+        // timer thats running for the igt
+        let timer_list_pointer =
+            UnityPointer::new("PlayTimeManager", 1, &["s_sInstance", "m_timerList"]);
 
         Some(Self {
             il2cpp_module,
@@ -49,6 +50,7 @@ impl Memory {
             time_trial_bonus_list_pointer,
             save_data_manager_pointer,
             save_slot,
+            timer_list_pointer,
         })
     }
 }
@@ -141,9 +143,20 @@ pub fn update_watchers(
             .update_infallible(list_save_data_pointer);
         let igt_update = calculate_main_igt(game, list_save_data_pointer, save_slot);
         watchers.save_data_hour.update_infallible(igt_update.hour);
-        watchers.save_data_minute.update_infallible(igt_update.minute);
-        watchers.save_data_second.update_infallible(igt_update.second);
+        watchers
+            .save_data_minute
+            .update_infallible(igt_update.minute);
+        watchers
+            .save_data_second
+            .update_infallible(igt_update.second);
     }
+
+    let timers_list_pointer = addresses.timer_list_pointer
+        .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    let curr_timer = calculate_running_timer(game, timers_list_pointer);
+    watchers.current_timer.update_infallible(curr_timer);
+
 }
 
 fn calculate_time_bonus(game: &Process, bonus_list_pointer: u64) -> u32 {
@@ -202,15 +215,21 @@ fn calculate_main_igt(
         )
         .unwrap_or_default();
 
-    igt.hour = game.read::<i32>(s_data_base_obj_ptr + 0x28).unwrap_or_default();
-    igt.minute = game.read::<i32>(s_data_base_obj_ptr + 0x2C).unwrap_or_default();
-    igt.second = game.read::<i32>(s_data_base_obj_ptr + 0x30).unwrap_or_default();
+    igt.hour = game
+        .read::<i32>(s_data_base_obj_ptr + 0x28)
+        .unwrap_or_default();
+    igt.minute = game
+        .read::<i32>(s_data_base_obj_ptr + 0x2C)
+        .unwrap_or_default();
+    igt.second = game
+        .read::<i32>(s_data_base_obj_ptr + 0x30)
+        .unwrap_or_default();
 
     igt
 }
 
 // old attempt at getting the igt, but MAYBE this is the timer thats used for incrementing the total slowly
-fn _calculate_main_igt_old(game: &Process, timers_list_pointer: u64) -> f64 {
+fn calculate_running_timer(game: &Process, timers_list_pointer: u64) -> f64 {
     // same as the time bonus as a base, but it's a list of objects instead (pointers instead of numbers)
     let items_pointer_res = game.read::<u64>(timers_list_pointer + 0x10);
     let items_pointer = match items_pointer_res {
