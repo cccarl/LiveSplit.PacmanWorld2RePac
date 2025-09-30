@@ -12,9 +12,9 @@ pub struct Memory {
     time_trial_igt: UnityPointer<2>,
     time_trial_state: UnityPointer<2>,
     time_trial_bonus_list_pointer: UnityPointer<2>,
-    save_data_manager_pointer: UnityPointer<2>,
+    /* save_data_manager_pointer: UnityPointer<2>,
     save_slot: UnityPointer<2>,
-    timer_list_pointer: UnityPointer<2>,
+    timer_list_pointer: UnityPointer<2>, */
 }
 
 impl Memory {
@@ -30,7 +30,9 @@ impl Memory {
         let time_trial_bonus_list_pointer =
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_bonusTimeList"]);
 
-        let save_data_manager_pointer =
+        // TODO StageManagerBase -> m_isEndInit possible level end indicator to avoid fake splits from menu level leave
+
+        /* let save_data_manager_pointer =
             UnityPointer::new("SaveDataManager", 1, &["s_sInstance", "m_implement"]);
 
         let save_slot =
@@ -38,7 +40,7 @@ impl Memory {
 
         // timer thats running for the igt
         let timer_list_pointer =
-            UnityPointer::new("PlayTimeManager", 1, &["s_sInstance", "m_timerList"]);
+            UnityPointer::new("PlayTimeManager", 1, &["s_sInstance", "m_timerList"]); */
 
         Some(Self {
             il2cpp_module,
@@ -48,18 +50,13 @@ impl Memory {
             time_trial_igt,
             time_trial_state,
             time_trial_bonus_list_pointer,
-            save_data_manager_pointer,
+            /* save_data_manager_pointer,
             save_slot,
-            timer_list_pointer,
+            timer_list_pointer, */
         })
     }
 }
 
-struct IgtCalculated {
-    hour: i32,
-    minute: i32,
-    second: i32,
-}
 
 pub fn update_watchers(
     game: &Process,
@@ -126,7 +123,7 @@ pub fn update_watchers(
     }
 
     // TODO move to full game runs only
-    let save_slot = addresses
+    /* let save_slot = addresses
         .save_slot
         .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
@@ -149,14 +146,14 @@ pub fn update_watchers(
         watchers
             .save_data_second
             .update_infallible(igt_update.second);
-    }
+    } */
 
-    let timers_list_pointer = addresses.timer_list_pointer
+    /* let timers_list_pointer = addresses
+        .timer_list_pointer
         .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
     let curr_timer = calculate_running_timer(game, timers_list_pointer);
-    watchers.current_timer.update_infallible(curr_timer);
-
+    watchers.current_timer.update_infallible(curr_timer); */
 }
 
 fn calculate_time_bonus(game: &Process, bonus_list_pointer: u64) -> u32 {
@@ -189,7 +186,14 @@ fn calculate_time_bonus(game: &Process, bonus_list_pointer: u64) -> u32 {
     total_bonus
 }
 
-fn calculate_main_igt(
+// unused, delete later
+/* struct IgtCalculated {
+    hour: i32,
+    minute: i32,
+    second: i32,
+} */
+
+/* fn calculate_main_igt(
     game: &Process,
     save_manager_pointer: u64,
     current_slot: i32,
@@ -201,7 +205,7 @@ fn calculate_main_igt(
     };
 
     // pointer in param: SaveDataManager.m_implement
-    // 0x10: ISaveDataManagerImplement.m_saveData
+    // param + 0x10: ISaveDataManagerImplement.m_saveData
     // 0x38: SaveData.m_subDataList (array)
     // 0x20 + saveslot * 8: SaveDataProgData.m_base (struct)
     // ----> 0x28: SDataBase.m_iPlayHours
@@ -226,10 +230,10 @@ fn calculate_main_igt(
         .unwrap_or_default();
 
     igt
-}
+} */
 
-// old attempt at getting the igt, but MAYBE this is the timer thats used for incrementing the total slowly
-fn calculate_running_timer(game: &Process, timers_list_pointer: u64) -> f64 {
+// get the live timer that's added to the igt on every save
+/* fn calculate_running_timer(game: &Process, timers_list_pointer: u64) -> f64 {
     // same as the time bonus as a base, but it's a list of objects instead (pointers instead of numbers)
     let items_pointer_res = game.read::<u64>(timers_list_pointer + 0x10);
     let items_pointer = match items_pointer_res {
@@ -269,3 +273,4 @@ fn calculate_running_timer(game: &Process, timers_list_pointer: u64) -> f64 {
 
     total_igt
 }
+ */
