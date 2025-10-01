@@ -8,7 +8,11 @@ pub struct Memory {
     il2cpp_module: Module,
     game_assembly: Image,
     is_loading: UnityPointer<2>,
+    // is_loading is not fully accurate, there is an animation at the loading screen that depends on the frame rate and is_loading is set to false during that
+    // the solution found was using the an UI param to complement is_loading
+    loadscreen_ui_pointer: UnityPointer<2>,
     level_id: UnityPointer<2>,
+    checkpoint: UnityPointer<2>,
     time_trial_igt: UnityPointer<2>,
     time_trial_state: UnityPointer<2>,
     time_trial_bonus_list_pointer: UnityPointer<2>,
@@ -24,13 +28,21 @@ impl Memory {
 
         let is_loading = UnityPointer::new("SceneManager", 1, &["s_sInstance", "m_bProcessing"]);
         let level_id = UnityPointer::new("SceneManager", 1, &["s_sInstance", "m_eCurrentScene"]);
+        let checkpoint = UnityPointer::new(
+            "StageStateManager",
+            1,
+            &["s_sInstance", "m_checkPointPriority"],
+        );
         let time_trial_igt = UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_time"]);
         let time_trial_state =
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_step"]);
         let time_trial_bonus_list_pointer =
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_bonusTimeList"]);
 
-        // TODO StageManagerBase -> m_isEndInit possible level end indicator to avoid fake splits from menu level leave
+        let loadscreen_ui_pointer =
+            UnityPointer::new("SystemUIRoot", 1, &["s_sInstance", "m_sLoadingUI"]);
+
+        // TODO BossSpooky has the end qte end (m_qteSuccess) but it's not static or singleton, it has static fields at the start of the class tho, see if it's possible to use that to get the complete bool
 
         /* let save_data_manager_pointer =
             UnityPointer::new("SaveDataManager", 1, &["s_sInstance", "m_implement"]);
@@ -46,17 +58,18 @@ impl Memory {
             il2cpp_module,
             game_assembly,
             is_loading,
+            checkpoint,
             level_id,
             time_trial_igt,
             time_trial_state,
             time_trial_bonus_list_pointer,
+            loadscreen_ui_pointer,
             /* save_data_manager_pointer,
             save_slot,
             timer_list_pointer, */
         })
     }
 }
-
 
 pub fn update_watchers(
     game: &Process,
@@ -76,6 +89,12 @@ pub fn update_watchers(
         .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
     watchers.level_id.update_infallible(level_id.into());
+
+    let checkpoint = addresses
+        .checkpoint
+        .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    watchers.checkpoint.update_infallible(checkpoint);
 
     watchers.time_trial_igt.update_infallible(
         addresses
@@ -100,6 +119,22 @@ pub fn update_watchers(
             _ => TimeTrialState::Unknown,
         });
 
+    // get the loading animation progress from the UI for a more accurate (normal) level start time
+    let loading_ui_add_res = addresses.loadscreen_ui_pointer.deref::<u64>(
+        game,
+        &addresses.il2cpp_module,
+        &addresses.game_assembly,
+    );
+    if let Ok(ui_add) = loading_ui_add_res {
+        //asr::timer::set_variable_int("m_sLoadingUI", ui_add);
+
+        // 0x4C: m_fProgPrev
+        let load_progress_pc = game.read::<f32>(ui_add + 0x4C).unwrap_or_default();
+        watchers
+            .load_ui_progress
+            .update_infallible(load_progress_pc);
+    }
+
     match settings.timer_mode.current {
         TimerMode::TimeTrial => {
             let bonus_list_address_res = addresses.time_trial_bonus_list_pointer.deref::<u64>(
@@ -116,13 +151,12 @@ pub fn update_watchers(
                 watchers
                     .time_trial_bonus_time
                     .update_infallible(calculate_time_bonus(game, list_pointer));
-            } else {
             }
         }
         TimerMode::FullGame => {}
     }
 
-    // TODO move to full game runs only
+    // unused, delete when autosplitter is official
     /* let save_slot = addresses
         .save_slot
         .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)

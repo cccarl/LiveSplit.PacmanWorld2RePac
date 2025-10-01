@@ -38,9 +38,11 @@ async fn main() {
                     update_watchers(&process, &memory, &mut watchers, &settings);
 
                     // get memory values
+                    let is_loading_pair = watchers.is_loading.pair.unwrap_or_default();
                     let level = watchers.level_id.pair.unwrap_or(Pair::default()).current;
                     let time_trial_igt_pair =
                         watchers.time_trial_igt.pair.unwrap_or(Pair::default());
+                    let checkpoint_pair = watchers.checkpoint.pair.unwrap_or(Pair::default());
                     let time_trial_state_pair =
                         watchers.time_trial_state.pair.unwrap_or(Pair::default());
                     let time_trial_bonus_list_pair = watchers
@@ -51,39 +53,46 @@ async fn main() {
                         .time_trial_bonus_time
                         .pair
                         .unwrap_or(Pair::default());
-                    let igt_address = watchers.timers_list_pointer.pair.unwrap_or(Pair::default());
-                    let save_data_address =
-                        watchers.save_data_pointer.pair.unwrap_or(Pair::default());
+                    let load_ui_progress_pair =
+                        watchers.load_ui_progress.pair.unwrap_or(Pair::default());
 
                     // vars display
                     asr::timer::set_variable("LevelEnum", level.to_string());
-                    asr::timer::set_variable_float("Time Trial Timer", time_trial_igt_pair.current);
-                    asr::timer::set_variable(
-                        "Time Trial State",
-                        match time_trial_state_pair.current {
-                            TimeTrialState::None => "None",
-                            TimeTrialState::ReadyInit => "Ready_Init",
-                            TimeTrialState::ReadyWait => "Ready_Wait",
-                            TimeTrialState::TA => "TA",
-                            TimeTrialState::Pause => "Pause",
-                            TimeTrialState::End => "End",
-                            TimeTrialState::Unknown => "Unknown",
-                        },
-                    );
-                    asr::timer::set_variable_int(
-                        "Time Trial Bonus List Address",
-                        time_trial_bonus_list_pair.current,
-                    );
-                    asr::timer::set_variable_int(
-                        "Time Trial Total Bonus",
-                        time_trial_bonus_pair.current,
-                    );
-                    asr::timer::set_variable_int("IGT List Address", igt_address.current);
-                    asr::timer::set_variable_int("Save Data Address", save_data_address.current);
+                    asr::timer::set_variable_int("Checkpoint", checkpoint_pair.current);
+                    asr::timer::set_variable_float("UI Load Anim Progress", load_ui_progress_pair.current);
 
+                    if settings.timer_mode.current == TimerMode::TimeTrial {
+                        asr::timer::set_variable_float(
+                            "Time Trial Timer",
+                            time_trial_igt_pair.current,
+                        );
+                        asr::timer::set_variable(
+                            "Time Trial State",
+                            match time_trial_state_pair.current {
+                                TimeTrialState::None => "None",
+                                TimeTrialState::ReadyInit => "Ready_Init",
+                                TimeTrialState::ReadyWait => "Ready_Wait",
+                                TimeTrialState::TA => "TA",
+                                TimeTrialState::Pause => "Pause",
+                                TimeTrialState::End => "End",
+                                TimeTrialState::Unknown => "Unknown",
+                            },
+                        );
+                        asr::timer::set_variable_int(
+                            "Time Trial Bonus List Address",
+                            time_trial_bonus_list_pair.current,
+                        );
+                        asr::timer::set_variable_int(
+                            "Time Trial Total Bonus",
+                            time_trial_bonus_pair.current,
+                        );
+                    }
                     match settings.timer_mode.current {
                         TimerMode::FullGame => {
-                            if is_loading(&watchers, &settings) {
+                            if is_loading_pair.current
+                                || (load_ui_progress_pair.current > 0.0
+                                    && load_ui_progress_pair.current < 1.0)
+                            {
                                 timer::pause_game_time();
                                 asr::timer::set_variable("Loading", "True");
                             } else {
@@ -122,6 +131,7 @@ async fn main() {
                                 timer::start();
                             }
 
+                            // TODO add checkpoint splits options
                             if time_trial_state_pair.old == TimeTrialState::TA
                                 && time_trial_state_pair.current == TimeTrialState::End
                             {
@@ -204,26 +214,21 @@ enum TimeTrialState {
 #[derive(Default)]
 struct Watchers {
     is_loading: Watcher<bool>,
+    load_ui_progress: Watcher<f32>,
     level_id: Watcher<Stages>,
+    checkpoint: Watcher<i32>,
     time_trial_igt: Watcher<f64>,
     time_trial_state: Watcher<TimeTrialState>,
     time_trial_bonus_list_pointer: Watcher<u64>,
-    time_trial_bonus_time: Watcher<u32>, // calculated bonus form the unity list with each timer
-    timers_list_pointer: Watcher<u64>,
+    time_trial_bonus_time: Watcher<u32>,
+    // calculated bonus form the unity list with each timer
+    /*timers_list_pointer: Watcher<u64>,
     save_data_pointer: Watcher<u64>,
-    /* save_slot: Watcher<i32>,
+    save_slot: Watcher<i32>,
     save_data_hour: Watcher<i32>,
     save_data_minute: Watcher<i32>,
     save_data_second: Watcher<i32>,
     current_timer: Watcher<f64>, */
-}
-
-fn is_loading(watchers: &Watchers, _settings: &Settings) -> bool {
-    if let Some(pair) = watchers.is_loading.pair {
-        pair.current
-    } else {
-        return false;
-    }
 }
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
