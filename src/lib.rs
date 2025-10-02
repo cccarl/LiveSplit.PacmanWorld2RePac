@@ -41,8 +41,8 @@ async fn main() {
                     let is_loading_pair = watchers.is_loading.pair.unwrap_or_default();
                     let level = watchers.level_id.pair.unwrap_or(Pair::default()).current;
                     let time_trial_igt_pair =
-                        watchers.time_trial_igt.pair.unwrap_or(Pair::default());
-                    let checkpoint_pair = watchers.checkpoint.pair.unwrap_or(Pair::default());
+                        watchers.time_trial_igt.pair.unwrap_or_default();
+                    let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
                     let time_trial_state_pair =
                         watchers.time_trial_state.pair.unwrap_or(Pair::default());
                     let time_trial_bonus_list_pair = watchers
@@ -87,6 +87,7 @@ async fn main() {
                             time_trial_bonus_pair.current,
                         );
                     }
+
                     match settings.timer_mode.current {
                         TimerMode::FullGame => {
                             if is_loading_pair.current
@@ -106,6 +107,7 @@ async fn main() {
                                 }
                                 timer::start();
                             }
+
 
                             if split(&watchers, &settings) {
                                 timer::split();
@@ -180,9 +182,13 @@ struct Settings {
     /// Split Options
     _title_split: Title,
 
-    /// Split On Level Complete
+    /// Split On Level Exit
     #[default = true]
     split_on_level_complete: bool,
+
+    /// Split On Spooky Defeat
+    #[default = true]
+    split_spooky_qte: bool,
 
     /// Reset Options
     _title_reset: Title,
@@ -221,6 +227,7 @@ struct Watchers {
     time_trial_state: Watcher<TimeTrialState>,
     time_trial_bonus_list_pointer: Watcher<u64>,
     time_trial_bonus_time: Watcher<u32>,
+    spooky_qte_success: Watcher<bool>,
     // calculated bonus form the unity list with each timer
     /*timers_list_pointer: Watcher<u64>,
     save_data_pointer: Watcher<u64>,
@@ -248,18 +255,17 @@ fn start(watchers: &Watchers, settings: &Settings) -> bool {
 }
 
 fn split(watchers: &Watchers, settings: &Settings) -> bool {
-    let level_pair = if let Some(pair) = &watchers.level_id.pair {
-        pair
-    } else {
-        return false;
+    // level exit split
+    let level_pair = watchers.level_id.pair.unwrap_or_default();
+
+    if level_pair.current != level_pair.old {
+        match level_pair.current {
+            Stages::StageSelect => return true && settings.split_on_level_complete,
+            _ => return false,
+        }
     };
 
-    if level_pair.current == level_pair.old {
-        return false;
-    }
-
-    match level_pair.current {
-        Stages::StageSelect => true && settings.split_on_level_complete,
-        _ => false,
-    }
+    // spooky qte final split
+    let spooky_pair = watchers.spooky_qte_success.pair.unwrap_or_default();
+    return spooky_pair.changed() && spooky_pair.current && settings.split_spooky_qte;
 }

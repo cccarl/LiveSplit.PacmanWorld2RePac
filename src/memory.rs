@@ -16,9 +16,11 @@ pub struct Memory {
     time_trial_igt: UnityPointer<2>,
     time_trial_state: UnityPointer<2>,
     time_trial_bonus_list_pointer: UnityPointer<2>,
-    /* save_data_manager_pointer: UnityPointer<2>,
-    save_slot: UnityPointer<2>,
-    timer_list_pointer: UnityPointer<2>, */
+    spooky_qte_success: UnityPointer<3>, // we only care about this in the spooky boss fight
+
+                                         /* save_data_manager_pointer: UnityPointer<2>,
+                                         save_slot: UnityPointer<2>,
+                                         timer_list_pointer: UnityPointer<2>, */
 }
 
 impl Memory {
@@ -38,35 +40,22 @@ impl Memory {
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_step"]);
         let time_trial_bonus_list_pointer =
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_bonusTimeList"]);
-
         let loadscreen_ui_pointer =
             UnityPointer::new("SystemUIRoot", 1, &["s_sInstance", "m_sLoadingUI"]);
-
-        // TODO BossSpooky has the end qte end (m_qteSuccess) but it's not static or singleton, it has static fields at the start of the class tho, see if it's possible to use that to get the complete bool
-
-        /* let save_data_manager_pointer =
-            UnityPointer::new("SaveDataManager", 1, &["s_sInstance", "m_implement"]);
-
-        let save_slot =
-            UnityPointer::new("GameStateManager", 1, &["s_sInstance", "m_currentSaveSlot"]);
-
-        // timer thats running for the igt
-        let timer_list_pointer =
-            UnityPointer::new("PlayTimeManager", 1, &["s_sInstance", "m_timerList"]); */
+        let spooky_qte_success =
+            UnityPointer::new("BossSpooky", 3, &["s_sInstance", "m_qteSuccess"]);
 
         Some(Self {
             il2cpp_module,
             game_assembly,
             is_loading,
+            loadscreen_ui_pointer,
             checkpoint,
             level_id,
             time_trial_igt,
             time_trial_state,
             time_trial_bonus_list_pointer,
-            loadscreen_ui_pointer,
-            /* save_data_manager_pointer,
-            save_slot,
-            timer_list_pointer, */
+            spooky_qte_success,
         })
     }
 }
@@ -135,6 +124,14 @@ pub fn update_watchers(
             .update_infallible(load_progress_pc);
     }
 
+    let spooky_qte_success = addresses
+        .spooky_qte_success
+        .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    watchers
+        .spooky_qte_success
+        .update_infallible(spooky_qte_success);
+
     match settings.timer_mode.current {
         TimerMode::TimeTrial => {
             let bonus_list_address_res = addresses.time_trial_bonus_list_pointer.deref::<u64>(
@@ -155,43 +152,10 @@ pub fn update_watchers(
         }
         TimerMode::FullGame => {}
     }
-
-    // unused, delete when autosplitter is official
-    /* let save_slot = addresses
-        .save_slot
-        .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    watchers.save_slot.update_infallible(save_slot);
-    let save_data_ptr_res = addresses.save_data_manager_pointer.deref::<u64>(
-        game,
-        &addresses.il2cpp_module,
-        &addresses.game_assembly,
-    );
-
-    if let Ok(list_save_data_pointer) = save_data_ptr_res {
-        watchers
-            .save_data_pointer
-            .update_infallible(list_save_data_pointer);
-        let igt_update = calculate_main_igt(game, list_save_data_pointer, save_slot);
-        watchers.save_data_hour.update_infallible(igt_update.hour);
-        watchers
-            .save_data_minute
-            .update_infallible(igt_update.minute);
-        watchers
-            .save_data_second
-            .update_infallible(igt_update.second);
-    } */
-
-    /* let timers_list_pointer = addresses
-        .timer_list_pointer
-        .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    let curr_timer = calculate_running_timer(game, timers_list_pointer);
-    watchers.current_timer.update_infallible(curr_timer); */
 }
 
 fn calculate_time_bonus(game: &Process, bonus_list_pointer: u64) -> u32 {
-    // this is a unity list pointer, it is an object with the data but not 100% straightforward
+    // this is a list pointer, it is an object with the data but not 100% straightforward
 
     // relevant data in this list object:
     // 0x10: pointer to the actual array, which is also an object, not just raw data
@@ -219,92 +183,3 @@ fn calculate_time_bonus(game: &Process, bonus_list_pointer: u64) -> u32 {
 
     total_bonus
 }
-
-// unused, delete later
-/* struct IgtCalculated {
-    hour: i32,
-    minute: i32,
-    second: i32,
-} */
-
-/* fn calculate_main_igt(
-    game: &Process,
-    save_manager_pointer: u64,
-    current_slot: i32,
-) -> IgtCalculated {
-    let mut igt = IgtCalculated {
-        hour: 0,
-        minute: 0,
-        second: 0,
-    };
-
-    // pointer in param: SaveDataManager.m_implement
-    // param + 0x10: ISaveDataManagerImplement.m_saveData
-    // 0x38: SaveData.m_subDataList (array)
-    // 0x20 + saveslot * 8: SaveDataProgData.m_base (struct)
-    // ----> 0x28: SDataBase.m_iPlayHours
-    //       0x2C: SDataBase.m_iPlayMinutes
-    //       0x30: SDataBase.m_iPlaySeconds
-    let s_data_base_obj_ptr = game
-        .read_pointer_path::<u64>(
-            save_manager_pointer,
-            asr::PointerSize::Bit64,
-            &[0x10, 0x38, 0x20 + (current_slot as u64 * 0x8)],
-        )
-        .unwrap_or_default();
-
-    igt.hour = game
-        .read::<i32>(s_data_base_obj_ptr + 0x28)
-        .unwrap_or_default();
-    igt.minute = game
-        .read::<i32>(s_data_base_obj_ptr + 0x2C)
-        .unwrap_or_default();
-    igt.second = game
-        .read::<i32>(s_data_base_obj_ptr + 0x30)
-        .unwrap_or_default();
-
-    igt
-} */
-
-// get the live timer that's added to the igt on every save
-/* fn calculate_running_timer(game: &Process, timers_list_pointer: u64) -> f64 {
-    // same as the time bonus as a base, but it's a list of objects instead (pointers instead of numbers)
-    let items_pointer_res = game.read::<u64>(timers_list_pointer + 0x10);
-    let items_pointer = match items_pointer_res {
-        Ok(pointer) => pointer,
-        Err(_) => return 0.0,
-    };
-
-    let list_size = game
-        .read::<u32>(timers_list_pointer + 0x18)
-        .unwrap_or_default();
-
-    asr::timer::set_variable_int("Timers active", list_size);
-
-    // each object is a "Timer" class, relevant fields:
-    // 0x10 timer kind
-    // 0x18 time
-    let mut total_igt: f64 = 0.0;
-    for i in 0..list_size {
-        let timer_obj_address = game
-            .read::<u64>(items_pointer + 0x20 + (0x8 * i as u64))
-            .unwrap_or_default();
-
-        let timer_kind = game
-            .read::<u64>(timer_obj_address + 0x10)
-            .unwrap_or_default();
-
-        // we only care about type 1, "All"
-        if timer_kind != 1 {
-            continue;
-        }
-
-        let time_in_obj = game
-            .read::<f64>(timer_obj_address + 0x18)
-            .unwrap_or_default();
-        total_igt += time_in_obj;
-    }
-
-    total_igt
-}
- */
