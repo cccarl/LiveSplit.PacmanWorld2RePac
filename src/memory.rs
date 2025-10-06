@@ -16,11 +16,9 @@ pub struct Memory {
     time_trial_igt: UnityPointer<2>,
     time_trial_state: UnityPointer<2>,
     time_trial_bonus_list_pointer: UnityPointer<2>,
-    spooky_qte_success: UnityPointer<3>, // we only care about this in the spooky boss fight
-
-                                         /* save_data_manager_pointer: UnityPointer<2>,
-                                         save_slot: UnityPointer<2>,
-                                         timer_list_pointer: UnityPointer<2>, */
+    spooky_qte_success: UnityPointer<3>,
+    tocman_hp: UnityPointer<3>,
+    tocman_state: UnityPointer<3>,
 }
 
 impl Memory {
@@ -44,6 +42,8 @@ impl Memory {
             UnityPointer::new("SystemUIRoot", 1, &["s_sInstance", "m_sLoadingUI"]);
         let spooky_qte_success =
             UnityPointer::new("BossSpooky", 3, &["s_sInstance", "m_qteSuccess"]);
+        let tocman_hp = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_life"]);
+        let tocman_state = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_state"]);
 
         Some(Self {
             il2cpp_module,
@@ -56,6 +56,8 @@ impl Memory {
             time_trial_state,
             time_trial_bonus_list_pointer,
             spooky_qte_success,
+            tocman_hp,
+            tocman_state,
         })
     }
 }
@@ -132,6 +134,21 @@ pub fn update_watchers(
         .spooky_qte_success
         .update_infallible(spooky_qte_success);
 
+    let tocman_hp = addresses
+        .tocman_hp
+        .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    watchers.tocman_hp.update_infallible(tocman_hp);
+
+    let tocman_state = addresses
+        .tocman_state
+        .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    watchers.tocman_state.update_infallible(tocman_state);
+
+    asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
+    asr::timer::set_variable_int("Toc-Man State", tocman_state);
+
     match settings.timer_mode.current {
         TimerMode::TimeTrial => {
             let bonus_list_address_res = addresses.time_trial_bonus_list_pointer.deref::<u64>(
@@ -141,10 +158,6 @@ pub fn update_watchers(
             );
 
             if let Ok(list_pointer) = bonus_list_address_res {
-                watchers
-                    .time_trial_bonus_list_pointer
-                    .update_infallible(list_pointer);
-
                 watchers
                     .time_trial_bonus_time
                     .update_infallible(calculate_time_bonus(game, list_pointer));

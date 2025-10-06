@@ -40,15 +40,10 @@ async fn main() {
                     // get memory values
                     let is_loading_pair = watchers.is_loading.pair.unwrap_or_default();
                     let level = watchers.level_id.pair.unwrap_or(Pair::default()).current;
-                    let time_trial_igt_pair =
-                        watchers.time_trial_igt.pair.unwrap_or_default();
+                    let time_trial_igt_pair = watchers.time_trial_igt.pair.unwrap_or_default();
                     let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
                     let time_trial_state_pair =
                         watchers.time_trial_state.pair.unwrap_or(Pair::default());
-                    let time_trial_bonus_list_pair = watchers
-                        .time_trial_bonus_list_pointer
-                        .pair
-                        .unwrap_or(Pair::default());
                     let time_trial_bonus_pair = watchers
                         .time_trial_bonus_time
                         .pair
@@ -59,7 +54,10 @@ async fn main() {
                     // vars display
                     asr::timer::set_variable("LevelEnum", level.to_string());
                     asr::timer::set_variable_int("Checkpoint", checkpoint_pair.current);
-                    asr::timer::set_variable_float("UI Load Anim Progress", load_ui_progress_pair.current);
+                    asr::timer::set_variable_float(
+                        "UI Load Anim Progress",
+                        load_ui_progress_pair.current,
+                    );
 
                     if settings.timer_mode.current == TimerMode::TimeTrial {
                         asr::timer::set_variable_float(
@@ -77,10 +75,6 @@ async fn main() {
                                 TimeTrialState::End => "End",
                                 TimeTrialState::Unknown => "Unknown",
                             },
-                        );
-                        asr::timer::set_variable_int(
-                            "Time Trial Bonus List Address",
-                            time_trial_bonus_list_pair.current,
                         );
                         asr::timer::set_variable_int(
                             "Time Trial Total Bonus",
@@ -108,7 +102,6 @@ async fn main() {
                                 timer::start();
                                 timer::set_game_time(Duration::new(3, 350_000_000));
                             }
-
 
                             if split(&watchers, &settings) {
                                 timer::split();
@@ -191,6 +184,10 @@ struct Settings {
     #[default = true]
     split_spooky_qte: bool,
 
+    /// Toc-Man Defeat
+    #[default = true]
+    split_tocman: bool,
+
     /// Reset Options
     _title_reset: Title,
 
@@ -226,17 +223,10 @@ struct Watchers {
     checkpoint: Watcher<i32>,
     time_trial_igt: Watcher<f64>,
     time_trial_state: Watcher<TimeTrialState>,
-    time_trial_bonus_list_pointer: Watcher<u64>,
     time_trial_bonus_time: Watcher<u32>,
     spooky_qte_success: Watcher<bool>,
-    // calculated bonus form the unity list with each timer
-    /*timers_list_pointer: Watcher<u64>,
-    save_data_pointer: Watcher<u64>,
-    save_slot: Watcher<i32>,
-    save_data_hour: Watcher<i32>,
-    save_data_minute: Watcher<i32>,
-    save_data_second: Watcher<i32>,
-    current_timer: Watcher<f64>, */
+    tocman_hp: Watcher<i32>,
+    tocman_state: Watcher<u32>,
 }
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
@@ -268,5 +258,15 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
 
     // spooky qte final split
     let spooky_pair = watchers.spooky_qte_success.pair.unwrap_or_default();
-    return spooky_pair.changed() && spooky_pair.current && settings.split_spooky_qte;
+    if spooky_pair.changed() && spooky_pair.current && settings.split_spooky_qte {
+        return true;
+    }
+
+    // tocman final hit split
+    let tocman_hp_pair = watchers.tocman_hp.pair.unwrap_or_default();
+    let tocman_state_pair = watchers.tocman_state.pair.unwrap_or_default();
+    return tocman_hp_pair.changed()
+        && tocman_hp_pair.current == 0
+        && tocman_state_pair.current == 3
+        && settings.split_tocman;
 }
