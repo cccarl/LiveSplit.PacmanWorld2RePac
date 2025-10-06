@@ -27,6 +27,8 @@ impl Memory {
         let game_assembly = il2cpp_module.get_default_image(game)?;
 
         let is_loading = UnityPointer::new("SceneManager", 1, &["s_sInstance", "m_bProcessing"]);
+        let loadscreen_ui_pointer =
+            UnityPointer::new("SystemUIRoot", 1, &["s_sInstance", "m_sLoadingUI"]);
         let level_id = UnityPointer::new("SceneManager", 1, &["s_sInstance", "m_eCurrentScene"]);
         let checkpoint = UnityPointer::new(
             "StageStateManager",
@@ -38,12 +40,17 @@ impl Memory {
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_step"]);
         let time_trial_bonus_list_pointer =
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_bonusTimeList"]);
-        let loadscreen_ui_pointer =
-            UnityPointer::new("SystemUIRoot", 1, &["s_sInstance", "m_sLoadingUI"]);
         let spooky_qte_success =
             UnityPointer::new("BossSpooky", 3, &["s_sInstance", "m_qteSuccess"]);
         let tocman_hp = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_life"]);
         let tocman_state = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_state"]);
+
+        // TODO:
+        // "ResultUIRoot -> m_isResultEnd" check if this can be used to verify the level was properly completed
+
+        // TODO
+        // "SceneBase : TitleScene -> m_step", check if this can be used to start the timer instead of the intro video;
+        // maybe there's a new game var somewhere so that it doesn't start with any save file, only new games
 
         Some(Self {
             il2cpp_module,

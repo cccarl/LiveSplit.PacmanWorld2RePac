@@ -66,7 +66,8 @@ async fn main() {
                                 }
                                 timer::start();
                                 // timing starts on difficulty select so we manually add the animation time before the intro movie starts
-                                timer::set_game_time(Duration::new(3, 350_000_000));
+                                // if i manage to detect that from memory then this will be removed
+                                timer::set_game_time(Duration::new(3, 333_333_333));
                             }
 
                             if split(&watchers, &settings) {
