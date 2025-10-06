@@ -39,9 +39,7 @@ async fn main() {
 
                     // get memory values
                     let is_loading_pair = watchers.is_loading.pair.unwrap_or_default();
-                    let level = watchers.level_id.pair.unwrap_or(Pair::default()).current;
                     let time_trial_igt_pair = watchers.time_trial_igt.pair.unwrap_or_default();
-                    let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
                     let time_trial_state_pair =
                         watchers.time_trial_state.pair.unwrap_or(Pair::default());
                     let time_trial_bonus_pair = watchers
@@ -50,37 +48,6 @@ async fn main() {
                         .unwrap_or(Pair::default());
                     let load_ui_progress_pair =
                         watchers.load_ui_progress.pair.unwrap_or(Pair::default());
-
-                    // vars display
-                    asr::timer::set_variable("LevelEnum", level.to_string());
-                    asr::timer::set_variable_int("Checkpoint", checkpoint_pair.current);
-                    asr::timer::set_variable_float(
-                        "UI Load Anim Progress",
-                        load_ui_progress_pair.current,
-                    );
-
-                    if settings.timer_mode.current == TimerMode::TimeTrial {
-                        asr::timer::set_variable_float(
-                            "Time Trial Timer",
-                            time_trial_igt_pair.current,
-                        );
-                        asr::timer::set_variable(
-                            "Time Trial State",
-                            match time_trial_state_pair.current {
-                                TimeTrialState::None => "None",
-                                TimeTrialState::ReadyInit => "Ready_Init",
-                                TimeTrialState::ReadyWait => "Ready_Wait",
-                                TimeTrialState::TA => "TA",
-                                TimeTrialState::Pause => "Pause",
-                                TimeTrialState::End => "End",
-                                TimeTrialState::Unknown => "Unknown",
-                            },
-                        );
-                        asr::timer::set_variable_int(
-                            "Time Trial Total Bonus",
-                            time_trial_bonus_pair.current,
-                        );
-                    }
 
                     match settings.timer_mode.current {
                         TimerMode::FullGame => {

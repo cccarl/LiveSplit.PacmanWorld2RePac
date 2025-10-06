@@ -68,86 +68,18 @@ pub fn update_watchers(
     watchers: &mut Watchers,
     settings: &Settings,
 ) {
-    watchers.is_loading.update_infallible(
-        addresses
-            .is_loading
-            .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-            .unwrap_or_default(),
-    );
-
     let level_id = addresses
         .level_id
         .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    watchers.level_id.update_infallible(level_id.into());
+        .unwrap_or_default()
+        .into();
+    watchers.level_id.update_infallible(level_id);
 
     let checkpoint = addresses
         .checkpoint
         .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
     watchers.checkpoint.update_infallible(checkpoint);
-
-    watchers.time_trial_igt.update_infallible(
-        addresses
-            .time_trial_igt
-            .deref::<f64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-            .unwrap_or_default(),
-    );
-
-    let time_trial_state_raw = addresses
-        .time_trial_state
-        .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    watchers
-        .time_trial_state
-        .update_infallible(match time_trial_state_raw {
-            0 => TimeTrialState::None,
-            1 => TimeTrialState::ReadyInit,
-            2 => TimeTrialState::ReadyWait,
-            3 => TimeTrialState::TA,
-            4 => TimeTrialState::Pause,
-            5 => TimeTrialState::End,
-            _ => TimeTrialState::Unknown,
-        });
-
-    // get the loading animation progress from the UI for a more accurate (normal) level start time
-    let loading_ui_add_res = addresses.loadscreen_ui_pointer.deref::<u64>(
-        game,
-        &addresses.il2cpp_module,
-        &addresses.game_assembly,
-    );
-    if let Ok(ui_add) = loading_ui_add_res {
-        //asr::timer::set_variable_int("m_sLoadingUI", ui_add);
-
-        // 0x4C: m_fProgPrev
-        let load_progress_pc = game.read::<f32>(ui_add + 0x4C).unwrap_or_default();
-        watchers
-            .load_ui_progress
-            .update_infallible(load_progress_pc);
-    }
-
-    let spooky_qte_success = addresses
-        .spooky_qte_success
-        .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    watchers
-        .spooky_qte_success
-        .update_infallible(spooky_qte_success);
-
-    let tocman_hp = addresses
-        .tocman_hp
-        .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    watchers.tocman_hp.update_infallible(tocman_hp);
-
-    let tocman_state = addresses
-        .tocman_state
-        .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    watchers.tocman_state.update_infallible(tocman_state);
-
-    asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
-    asr::timer::set_variable_int("Toc-Man State", tocman_state);
 
     match settings.timer_mode.current {
         TimerMode::TimeTrial => {
@@ -157,13 +89,101 @@ pub fn update_watchers(
                 &addresses.game_assembly,
             );
 
+            let time_trial_igt = addresses
+                .time_trial_igt
+                .deref::<f64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            watchers.time_trial_igt.update_infallible(time_trial_igt);
+
+            let time_trial_state_raw = addresses
+                .time_trial_state
+                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            let time_trial_state = match time_trial_state_raw {
+                0 => TimeTrialState::None,
+                1 => TimeTrialState::ReadyInit,
+                2 => TimeTrialState::ReadyWait,
+                3 => TimeTrialState::TA,
+                4 => TimeTrialState::Pause,
+                5 => TimeTrialState::End,
+                _ => TimeTrialState::Unknown,
+            };
+            watchers
+                .time_trial_state
+                .update_infallible(time_trial_state);
+
             if let Ok(list_pointer) = bonus_list_address_res {
+                let time_trial_bonus = calculate_time_bonus(game, list_pointer);
                 watchers
                     .time_trial_bonus_time
-                    .update_infallible(calculate_time_bonus(game, list_pointer));
+                    .update_infallible(time_trial_bonus);
+                asr::timer::set_variable_int("Time Trial Total Bonus", time_trial_bonus);
             }
+
+            asr::timer::set_variable_float("Time Trial Timer", time_trial_igt);
+            asr::timer::set_variable(
+                "Time Trial State",
+                match time_trial_state {
+                    TimeTrialState::None => "None",
+                    TimeTrialState::ReadyInit => "Ready_Init",
+                    TimeTrialState::ReadyWait => "Ready_Wait",
+                    TimeTrialState::TA => "TA",
+                    TimeTrialState::Pause => "Pause",
+                    TimeTrialState::End => "End",
+                    TimeTrialState::Unknown => "Unknown",
+                },
+            );
         }
-        TimerMode::FullGame => {}
+        TimerMode::FullGame => {
+            watchers.is_loading.update_infallible(
+                addresses
+                    .is_loading
+                    .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                    .unwrap_or_default(),
+            );
+
+            // get the loading animation progress from the UI for a more accurate (normal) level start time
+            let loading_ui_add_res = addresses.loadscreen_ui_pointer.deref::<u64>(
+                game,
+                &addresses.il2cpp_module,
+                &addresses.game_assembly,
+            );
+            if let Ok(ui_add) = loading_ui_add_res {
+                //asr::timer::set_variable_int("m_sLoadingUI", ui_add);
+
+                // 0x4C: m_fProgPrev
+                let load_progress_pc = game.read::<f32>(ui_add + 0x4C).unwrap_or_default();
+                watchers
+                    .load_ui_progress
+                    .update_infallible(load_progress_pc);
+                asr::timer::set_variable_float("UI Load Anim Progress", load_progress_pc);
+            }
+
+            let spooky_qte_success = addresses
+                .spooky_qte_success
+                .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            watchers
+                .spooky_qte_success
+                .update_infallible(spooky_qte_success);
+
+            let tocman_hp = addresses
+                .tocman_hp
+                .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            watchers.tocman_hp.update_infallible(tocman_hp);
+
+            let tocman_state = addresses
+                .tocman_state
+                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            watchers.tocman_state.update_infallible(tocman_state);
+
+            asr::timer::set_variable("LevelEnum", level_id.to_string());
+            asr::timer::set_variable_int("Checkpoint", checkpoint);
+            asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
+            asr::timer::set_variable_int("Toc-Man State", tocman_state);
+        }
     }
 }
 
