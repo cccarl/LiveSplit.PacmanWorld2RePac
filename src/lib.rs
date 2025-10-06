@@ -239,5 +239,6 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
     return tocman_hp_pair.changed()
         && tocman_hp_pair.current == 0
         && tocman_state_pair.current == 3
+        && level_pair.current == Stages::Stage6_5
         && settings.split_tocman;
 }
