@@ -147,6 +147,10 @@ struct Settings {
     #[default = true]
     split_on_level_complete: bool,
 
+    /// Level Exit (Past)
+    #[default = true]
+    split_on_past_level_complete: bool,
+
     /// Spooky Defeat
     #[default = true]
     split_spooky_qte: bool,
@@ -218,7 +222,8 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
 
     if level_pair.current != level_pair.old {
         match level_pair.current {
-            Stages::StageSelect => return true && settings.split_on_level_complete,
+            Stages::StageSelect => return settings.split_on_level_complete,
+            Stages::StageSelectPast => return settings.split_on_past_level_complete,
             _ => return false,
         }
     };
