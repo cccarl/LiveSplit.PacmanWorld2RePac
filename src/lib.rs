@@ -56,10 +56,8 @@ async fn main() {
                                     && load_ui_progress_pair.current < 1.0)
                             {
                                 timer::pause_game_time();
-                                asr::timer::set_variable("Loading", "True");
                             } else {
                                 timer::resume_game_time();
-                                asr::timer::set_variable("Loading", "False");
                             }
 
                             if start(&watchers, &settings) {
@@ -67,6 +65,7 @@ async fn main() {
                                     timer::reset();
                                 }
                                 timer::start();
+                                // timing starts on difficulty select so we manually add the animation time before the intro movie starts
                                 timer::set_game_time(Duration::new(3, 350_000_000));
                             }
 

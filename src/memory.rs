@@ -135,12 +135,11 @@ pub fn update_watchers(
             );
         }
         TimerMode::FullGame => {
-            watchers.is_loading.update_infallible(
-                addresses
-                    .is_loading
-                    .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                    .unwrap_or_default(),
-            );
+            let is_loading = addresses
+                .is_loading
+                .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            watchers.is_loading.update_infallible(is_loading);
 
             // get the loading animation progress from the UI for a more accurate (normal) level start time
             let loading_ui_add_res = addresses.loadscreen_ui_pointer.deref::<u64>(
@@ -179,6 +178,11 @@ pub fn update_watchers(
                 .unwrap_or_default();
             watchers.tocman_state.update_infallible(tocman_state);
 
+            if is_loading {
+                asr::timer::set_variable("Loading", "True");
+            } else {
+                asr::timer::set_variable("Loading", "False");
+            }
             asr::timer::set_variable("LevelEnum", level_id.to_string());
             asr::timer::set_variable_int("Checkpoint", checkpoint);
             asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
