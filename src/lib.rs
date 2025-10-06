@@ -106,6 +106,7 @@ async fn main() {
                                     timer::reset();
                                 }
                                 timer::start();
+                                timer::set_game_time(Duration::new(3, 350_000_000));
                             }
 
 
@@ -175,32 +176,32 @@ struct Settings {
     /// Start Options
     _title_start: Title,
 
-    /// Start On New File
+    /// New File
     #[default = true]
     start_new_game: bool,
 
     /// Split Options
     _title_split: Title,
 
-    /// Split On Level Exit
+    /// Level Exit
     #[default = true]
     split_on_level_complete: bool,
 
-    /// Split On Spooky Defeat
+    /// Spooky Defeat
     #[default = true]
     split_spooky_qte: bool,
 
     /// Reset Options
     _title_reset: Title,
 
-    /// Reset On New File
+    /// New File
     #[default = true]
     reset_on_file_creation: bool,
 
     /// Misc
     _misc_title: Title,
 
-    /// Discount Bonus Time
+    /// Discount Bonus Time on Time Trials
     #[default = true]
     time_trial_discount_bonus: bool,
 }
