@@ -1,4 +1,6 @@
-use crate::{PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers};
+use crate::{
+    stages::Stages, PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers,
+};
 use asr::{
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
     Process,
@@ -194,34 +196,44 @@ pub fn update_watchers(
                 asr::timer::set_variable_float("UI Load Anim Progress", load_progress_pc);
             }
 
-            let spooky_qte_success = addresses
-                .spooky_qte_success
-                .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                .unwrap_or_default();
-            watchers
-                .spooky_qte_success
-                .update_infallible(spooky_qte_success);
+            if level_id == Stages::Stage6_4 {
+                let spooky_qte_success = addresses
+                    .spooky_qte_success
+                    .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                    .unwrap_or_default();
+                watchers
+                    .spooky_qte_success
+                    .update_infallible(spooky_qte_success);
+                asr::timer::set_variable(
+                    "Spooky QTE Complete",
+                    match spooky_qte_success {
+                        true => "Yes",
+                        false => "No",
+                    },
+                );
+            }
 
-            let tocman_hp = addresses
-                .tocman_hp
-                .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                .unwrap_or_default();
-            watchers.tocman_hp.update_infallible(tocman_hp);
+            if level_id == Stages::Stage6_5 {
+                let tocman_hp = addresses
+                    .tocman_hp
+                    .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                    .unwrap_or_default();
+                watchers.tocman_hp.update_infallible(tocman_hp);
 
-            let tocman_state = addresses
-                .tocman_state
-                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                .unwrap_or_default();
-            watchers.tocman_state.update_infallible(tocman_state);
+                let tocman_state = addresses
+                    .tocman_state
+                    .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                    .unwrap_or_default();
+                watchers.tocman_state.update_infallible(tocman_state);
+                asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
+                asr::timer::set_variable_int("Toc-Man State", tocman_state);
+            }
 
             if is_loading {
                 asr::timer::set_variable("Loading", "True");
             } else {
                 asr::timer::set_variable("Loading", "False");
             }
-
-            asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
-            asr::timer::set_variable_int("Toc-Man State", tocman_state);
         }
     }
 }
