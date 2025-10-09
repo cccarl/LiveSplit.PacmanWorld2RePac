@@ -1,4 +1,4 @@
-use crate::{Settings, TimeTrialState, TimerMode, Watchers};
+use crate::{PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers};
 use asr::{
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
     Process,
@@ -19,6 +19,8 @@ pub struct Memory {
     spooky_qte_success: UnityPointer<3>,
     tocman_hp: UnityPointer<3>,
     tocman_state: UnityPointer<3>,
+    players_array: UnityPointer<3>,
+    stage_manager_state: UnityPointer<3>,
 }
 
 impl Memory {
@@ -44,13 +46,11 @@ impl Memory {
             UnityPointer::new("BossSpooky", 3, &["s_sInstance", "m_qteSuccess"]);
         let tocman_hp = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_life"]);
         let tocman_state = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_state"]);
+        let players_array = UnityPointer::new("PlayerManager", 2, &["s_sInstance", "m_players"]);
+        let stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
 
-        // TODO:
-        // "ResultUIRoot -> m_isResultEnd" check if this can be used to verify the level was properly completed
-
-        // TODO
-        // "SceneBase : TitleScene -> m_step", check if this can be used to start the timer instead of the intro video;
-        // maybe there's a new game var somewhere so that it doesn't start with any save file, only new games
+        // TODO cope for a better autostart
+        // "SceneBase : TitleScene
 
         Some(Self {
             il2cpp_module,
@@ -65,6 +65,8 @@ impl Memory {
             spooky_qte_success,
             tocman_hp,
             tocman_state,
+            players_array,
+            stage_manager_state,
         })
     }
 }
@@ -87,6 +89,9 @@ pub fn update_watchers(
         .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
     watchers.checkpoint.update_infallible(checkpoint);
+
+    asr::timer::set_variable("LevelEnum", level_id.to_string());
+    asr::timer::set_variable_int("Checkpoint", checkpoint);
 
     match settings.timer_mode.current {
         TimerMode::TimeTrial => {
@@ -141,6 +146,30 @@ pub fn update_watchers(
                 },
             );
         }
+        TimerMode::IL => {
+            let players_array_pointer_res = addresses.players_array.deref::<u64>(
+                game,
+                &addresses.il2cpp_module,
+                &addresses.game_assembly,
+            );
+            if let Ok(players_array_pointer) = players_array_pointer_res {
+                let player_state = get_player1_state(game, players_array_pointer);
+                watchers.player_state.update_infallible(player_state);
+                asr::timer::set_variable("Player State", player_state_to_string(player_state));
+            }
+
+            let stage_manager_state_int = addresses
+                .stage_manager_state
+                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
+            watchers.stage_state.update_infallible(stage_manager_state);
+
+            asr::timer::set_variable(
+                "Stage Manager State",
+                stage_state_to_string(stage_manager_state),
+            );
+        }
         TimerMode::FullGame => {
             let is_loading = addresses
                 .is_loading
@@ -190,8 +219,7 @@ pub fn update_watchers(
             } else {
                 asr::timer::set_variable("Loading", "False");
             }
-            asr::timer::set_variable("LevelEnum", level_id.to_string());
-            asr::timer::set_variable_int("Checkpoint", checkpoint);
+
             asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
             asr::timer::set_variable_int("Toc-Man State", tocman_state);
         }
@@ -226,4 +254,95 @@ fn calculate_time_bonus(game: &Process, bonus_list_pointer: u64) -> u32 {
     }
 
     total_bonus
+}
+
+fn get_player1_state(game: &Process, players_pointer: u64) -> PlayerState {
+    // all active "PlayerPacman"s are in an array, probably for 2p compatibility
+    // so in the array obj, offset 0x20 is the PlayerPacman object we need, position 0
+    let player_obj = game.read::<u64>(players_pointer + 0x20).unwrap_or_default();
+    // PlayerPacman 0x844 -> m_step, the player's state
+    let player_state_int = game.read::<u32>(player_obj + 0x844).unwrap_or_default();
+    match player_state_int {
+        0 => PlayerState::None,
+        1 => PlayerState::Control,
+        2 => PlayerState::Damage,
+        3 => PlayerState::FallDamage,
+        4 => PlayerState::IcePoolDamage,
+        5 => PlayerState::SnowBallDamage,
+        6 => PlayerState::SinkDamage,
+        7 => PlayerState::CutIn,
+        8 => PlayerState::CutInGrap,
+        9 => PlayerState::Gimmick,
+        10 => PlayerState::SpaceJump,
+        11 => PlayerState::SpaceJumpOut,
+        12 => PlayerState::StageInit,
+        13 => PlayerState::StageInitMaze,
+        14 => PlayerState::StageInitSJ,
+        15 => PlayerState::Dead,
+        16 => PlayerState::Goal,
+        17 => PlayerState::StageEnd,
+        18 => PlayerState::Shooting,
+        19 => PlayerState::Racing,
+        _ => PlayerState::Unknown,
+    }
+}
+
+fn player_state_to_string(player_state: PlayerState) -> &'static str {
+    match player_state {
+        PlayerState::None => "None",
+        PlayerState::Control => "Control",
+        PlayerState::Damage => "Damage",
+        PlayerState::FallDamage => "Fall Damage",
+        PlayerState::IcePoolDamage => "Ice Pool Damage",
+        PlayerState::SnowBallDamage => "Snow Ball Damage",
+        PlayerState::SinkDamage => "Sink Damage",
+        PlayerState::CutIn => "Cut In",
+        PlayerState::CutInGrap => "Cut In Grap",
+        PlayerState::Gimmick => "Cut In Grap",
+        PlayerState::SpaceJump => "Space Jump",
+        PlayerState::SpaceJumpOut => "Space Jump Out",
+        PlayerState::StageInit => "Stage Init",
+        PlayerState::StageInitMaze => "Stage InitMaze",
+        PlayerState::StageInitSJ => "Stage Init SJ",
+        PlayerState::Dead => "Dead",
+        PlayerState::Goal => "Goal",
+        PlayerState::StageEnd => "StageEnd",
+        PlayerState::Shooting => "Shooting",
+        PlayerState::Racing => "Racing",
+        PlayerState::Unknown => "UNKNOWN",
+    }
+}
+
+fn get_stage_manager_state(state: u32) -> StageState {
+    match state {
+        0 => StageState::None,
+        1 => StageState::InitOnFade,
+        2 => StageState::InitEndFade,
+        3 => StageState::Playing,
+        4 => StageState::Pause,
+        5 => StageState::DebugPause,
+        6 => StageState::Maze,
+        7 => StageState::PacDead,
+        8 => StageState::GameOver,
+        9 => StageState::Goal,
+        10 => StageState::Exit,
+        _ => StageState::Unknown,
+    }
+}
+
+fn stage_state_to_string(state: StageState) -> &'static str {
+    match state {
+        StageState::None => "None",
+        StageState::InitOnFade => "Init On Fade",
+        StageState::InitEndFade => "Init End Fade",
+        StageState::Playing => "Playing",
+        StageState::Pause => "Pause",
+        StageState::DebugPause => "Debug Pause",
+        StageState::Maze => "Maze",
+        StageState::PacDead => "Pac Dead",
+        StageState::GameOver => "Game Over",
+        StageState::Goal => "Goal",
+        StageState::Exit => "Exit",
+        StageState::Unknown => "Unknown",
+    }
 }

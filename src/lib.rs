@@ -30,6 +30,8 @@ async fn main() {
                 // Once the target has been found and attached to, set up some default watchers
                 let mut watchers = Watchers::default();
 
+                let mut enable_il_restart = false;
+
                 // Perform memory scanning to look for the addresses we need
                 let memory = retry(|| Memory::init(&process)).await;
                 loop {
@@ -65,13 +67,52 @@ async fn main() {
                                     timer::reset();
                                 }
                                 timer::start();
-                                // timing starts on difficulty select so we manually add the animation time before the intro movie starts
+                                // timing starts on difficulty select so we manually add the animation time before the loading starts
                                 // if i manage to detect that from memory then this will be removed
                                 timer::set_game_time(Duration::new(3, 333_333_333));
                             }
 
-                            if split(&watchers, &settings) {
+                            if split_full_game(&watchers, &settings) {
                                 timer::split();
+                            }
+                        }
+                        TimerMode::IL => {
+                            let player_state_pair = watchers.player_state.pair.unwrap_or_default();
+                            let stage_state_pair = watchers.stage_state.pair.unwrap_or_default();
+                            let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
+
+                            // 3 cases that enable timer start:
+                            // * restart from menu while player is not dead and checkpoint is -1 (works on stage start before checkpoints)
+                            // * checkpoint returns to -1 while stage state is "pac dead"
+                            // * start from level select
+                            if (stage_state_pair.old == StageState::Pause
+                                && stage_state_pair.current == StageState::PacDead
+                                && player_state_pair.current != PlayerState::Dead
+                                && checkpoint_pair.current == -1)
+                                || (checkpoint_pair.changed()
+                                    && checkpoint_pair.current == -1
+                                    && stage_state_pair.current == StageState::PacDead)
+                                || (player_state_pair.old == PlayerState::StageInit
+                                    && player_state_pair.current == PlayerState::Control)
+                            {
+                                enable_il_restart = true;
+                            }
+
+                            if player_state_pair.old != PlayerState::Control
+                                && player_state_pair.current == PlayerState::Control
+                                && enable_il_restart
+                                && settings.start_il
+                            {
+                                asr::timer::reset();
+                                asr::timer::start();
+                                enable_il_restart = false;
+                            }
+
+                            if player_state_pair.current != player_state_pair.old
+                                && player_state_pair.current == PlayerState::Goal
+                                && settings.split_il
+                            {
+                                asr::timer::split();
                             }
                         }
                         TimerMode::TimeTrial => {
@@ -121,6 +162,8 @@ pub enum TimerMode {
     /// Full Game
     #[default]
     FullGame,
+    /// Individual Level
+    IL,
     /// Time Trial
     TimeTrial,
 }
@@ -136,9 +179,13 @@ struct Settings {
     /// Start Options
     _title_start: Title,
 
-    /// New File
+    /// Full Game New File
     #[default = true]
     start_new_game: bool,
+
+    /// Individual Level
+    #[default = true]
+    start_il: bool,
 
     /// Split Options
     _title_split: Title,
@@ -158,6 +205,10 @@ struct Settings {
     /// Toc-Man Defeat
     #[default = true]
     split_tocman: bool,
+
+    /// Individual Level End
+    #[default = true]
+    split_il: bool,
 
     /// Reset Options
     _title_reset: Title,
@@ -186,6 +237,49 @@ enum TimeTrialState {
     Unknown,
 }
 
+#[derive(Clone, Copy, PartialEq, Default)]
+enum PlayerState {
+    #[default]
+    None,
+    Control,
+    Damage,
+    FallDamage,
+    IcePoolDamage,
+    SnowBallDamage,
+    SinkDamage,
+    CutIn,
+    CutInGrap,
+    Gimmick,
+    SpaceJump,
+    SpaceJumpOut,
+    StageInit,
+    StageInitMaze,
+    StageInitSJ,
+    Dead,
+    Goal,
+    StageEnd,
+    Shooting,
+    Racing,
+    Unknown,
+}
+
+#[derive(Clone, Copy, PartialEq, Default)]
+enum StageState {
+    #[default]
+    None,
+    InitOnFade,
+    InitEndFade,
+    Playing,
+    Pause,
+    DebugPause,
+    Maze,
+    PacDead,
+    GameOver,
+    Goal,
+    Exit,
+    Unknown,
+}
+
 #[derive(Default)]
 struct Watchers {
     is_loading: Watcher<bool>,
@@ -198,6 +292,8 @@ struct Watchers {
     spooky_qte_success: Watcher<bool>,
     tocman_hp: Watcher<i32>,
     tocman_state: Watcher<u32>,
+    player_state: Watcher<PlayerState>,
+    stage_state: Watcher<StageState>,
 }
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
@@ -216,7 +312,7 @@ fn start(watchers: &Watchers, settings: &Settings) -> bool {
         && settings.start_new_game
 }
 
-fn split(watchers: &Watchers, settings: &Settings) -> bool {
+fn split_full_game(watchers: &Watchers, settings: &Settings) -> bool {
     // level exit split
     let level_pair = watchers.level_id.pair.unwrap_or_default();
 
