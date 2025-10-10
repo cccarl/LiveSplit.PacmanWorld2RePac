@@ -92,6 +92,17 @@ pub fn update_watchers(
         .unwrap_or_default();
     watchers.checkpoint.update_infallible(checkpoint);
 
+    let players_array_pointer_res = addresses.players_array.deref::<u64>(
+        game,
+        &addresses.il2cpp_module,
+        &addresses.game_assembly,
+    );
+    if let Ok(players_array_pointer) = players_array_pointer_res {
+        let player_state = get_player1_state(game, players_array_pointer);
+        watchers.player_state.update_infallible(player_state);
+        asr::timer::set_variable("Player State", player_state_to_string(player_state));
+    }
+
     asr::timer::set_variable("LevelEnum", level_id.to_string());
     asr::timer::set_variable_int("Checkpoint", checkpoint);
 
@@ -149,17 +160,6 @@ pub fn update_watchers(
             );
         }
         TimerMode::IL => {
-            let players_array_pointer_res = addresses.players_array.deref::<u64>(
-                game,
-                &addresses.il2cpp_module,
-                &addresses.game_assembly,
-            );
-            if let Ok(players_array_pointer) = players_array_pointer_res {
-                let player_state = get_player1_state(game, players_array_pointer);
-                watchers.player_state.update_infallible(player_state);
-                asr::timer::set_variable("Player State", player_state_to_string(player_state));
-            }
-
             let stage_manager_state_int = addresses
                 .stage_manager_state
                 .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)

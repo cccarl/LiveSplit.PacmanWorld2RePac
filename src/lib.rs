@@ -31,6 +31,7 @@ async fn main() {
                 let mut watchers = Watchers::default();
 
                 let mut enable_il_restart = false;
+                let mut enable_level_split = false;
 
                 // Perform memory scanning to look for the addresses we need
                 let memory = retry(|| Memory::init(&process)).await;
@@ -50,6 +51,7 @@ async fn main() {
                         .unwrap_or(Pair::default());
                     let load_ui_progress_pair =
                         watchers.load_ui_progress.pair.unwrap_or(Pair::default());
+                    let player_state_pair = watchers.player_state.pair.unwrap_or_default();
 
                     match settings.timer_mode.current {
                         TimerMode::FullGame => {
@@ -72,12 +74,18 @@ async fn main() {
                                 timer::set_game_time(Duration::new(3, 333_333_333));
                             }
 
-                            if split_full_game(&watchers, &settings) {
+                            // only do level splits if player actually completed the level
+                            // or it's from pac-village
+                            if !enable_level_split {
+                                enable_level_split = enable_full_game_level_splits(&watchers);
+                            }
+
+                            if split_full_game(&watchers, &settings, enable_level_split) {
                                 timer::split();
+                                enable_level_split = false;
                             }
                         }
                         TimerMode::IL => {
-                            let player_state_pair = watchers.player_state.pair.unwrap_or_default();
                             let stage_state_pair = watchers.stage_state.pair.unwrap_or_default();
                             let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
 
@@ -312,11 +320,11 @@ fn start(watchers: &Watchers, settings: &Settings) -> bool {
         && settings.start_new_game
 }
 
-fn split_full_game(watchers: &Watchers, settings: &Settings) -> bool {
+fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled: bool) -> bool {
     // level exit split
     let level_pair = watchers.level_id.pair.unwrap_or_default();
 
-    if level_pair.current != level_pair.old {
+    if level_pair.current != level_pair.old && level_split_enabled {
         match level_pair.current {
             Stages::StageSelect => return settings.split_on_level_complete,
             Stages::StageSelectPast => return settings.split_on_past_level_complete,
@@ -338,4 +346,15 @@ fn split_full_game(watchers: &Watchers, settings: &Settings) -> bool {
         && tocman_state_pair.current == 3
         && level_pair.current == Stages::Stage6_5
         && settings.split_tocman;
+}
+
+fn enable_full_game_level_splits(watchers: &Watchers) -> bool {
+    let player_state_pair = watchers.player_state.pair.unwrap_or_default();
+    let stage_pair = watchers.level_id.pair.unwrap_or_default();
+
+    return (player_state_pair.current == PlayerState::Goal
+        && player_state_pair.current != player_state_pair.old)
+        || ((stage_pair.current == Stages::StageSelect
+            || stage_pair.current == Stages::StageSelectPast)
+            && stage_pair.old == Stages::PacVillage);
 }
