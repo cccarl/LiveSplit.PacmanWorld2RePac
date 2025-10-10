@@ -113,6 +113,8 @@ async fn main() {
                             {
                                 asr::timer::reset();
                                 asr::timer::start();
+                                asr::timer::resume_game_time();
+                                asr::timer::set_game_time(Duration::seconds(0));
                                 enable_il_restart = false;
                             }
 
