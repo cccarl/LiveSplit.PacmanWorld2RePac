@@ -122,8 +122,15 @@ async fn main() {
                                 && player_state_pair.current == PlayerState::Goal
                                 && settings.split_il
                             {
+                                // JANK SOLUTION to finish the run even when there are splits pending from skipping checkpoints
+                                for _ in 0..100 {
+                                    asr::timer::skip_split();
+                                }
+                                // end run :)
                                 asr::timer::split();
                             }
+
+                            split_checkpoints(&checkpoint_pair, &settings);
                         }
                         TimerMode::TimeTrial => {
                             timer::pause_game_time();
@@ -219,6 +226,13 @@ struct Settings {
     /// Individual Level End
     #[default = true]
     split_il: bool,
+
+    /// Individual Level Checkpoints
+    ///
+    /// You will need the same number of splits before the final one and checkpoints.
+    /// For example, "Butane Pain" has 8 checkpoints, so you will need 9 total splits for optimal use.
+    #[default = false]
+    split_checkpoint: bool,
 
     /// Reset Options
     _title_reset: Title,
@@ -359,4 +373,21 @@ fn enable_full_game_level_splits(watchers: &Watchers) -> bool {
         || ((stage_pair.current == Stages::StageSelect
             || stage_pair.current == Stages::StageSelectPast)
             && stage_pair.old == Stages::PacVillage);
+}
+
+fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) {
+    if !settings.split_checkpoint || !checkpoints_pair.changed() || checkpoints_pair.decreased() {
+        return;
+    }
+
+    let start_skip = match checkpoints_pair.old {
+        -1 => 0,
+        i => i,
+    };
+    let split_goal = checkpoints_pair.current;
+
+    for _ in start_skip..(split_goal - 1) {
+        asr::timer::skip_split();
+    }
+    asr::timer::split();
 }
