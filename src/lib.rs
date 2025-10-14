@@ -32,6 +32,7 @@ async fn main() {
 
                 let mut enable_il_restart = false;
                 let mut enable_level_split = false;
+                let mut last_time_trial_split_time: f64 = 0.;
 
                 // Perform memory scanning to look for the addresses we need
                 let memory = retry(|| Memory::init(&process)).await;
@@ -130,16 +131,19 @@ async fn main() {
                                 asr::timer::split();
                             }
 
-                            split_checkpoints(&checkpoint_pair, &settings);
+                            if split_checkpoints(&checkpoint_pair, &settings) {
+                                asr::timer::split();
+                            }
                         }
                         TimerMode::TimeTrial => {
                             timer::pause_game_time();
+                            let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
+                            let stage_pair = watchers.level_id.pair.unwrap_or_default();
+                            let igt_with_bonus = time_trial_igt_pair.current
+                                - (time_trial_bonus_pair.current as f64);
 
                             if settings.time_trial_discount_bonus {
-                                timer::set_game_time(Duration::seconds_f64(
-                                    time_trial_igt_pair.current
-                                        - (time_trial_bonus_pair.current as f64),
-                                ));
+                                timer::set_game_time(Duration::seconds_f64(igt_with_bonus));
                             } else {
                                 timer::set_game_time(Duration::seconds_f64(
                                     time_trial_igt_pair.current,
@@ -150,17 +154,38 @@ async fn main() {
                                 && time_trial_state_pair.current == TimeTrialState::TA
                             {
                                 timer::start();
+                                last_time_trial_split_time = 0.;
                             }
 
-                            // TODO add checkpoint splits options
-                            if time_trial_state_pair.old == TimeTrialState::TA
+                            if time_trial_state_pair.old != TimeTrialState::End
                                 && time_trial_state_pair.current == TimeTrialState::End
                             {
+                                // JANK SOLUTION to finish the run even when there are splits pending from skipping checkpoints
+                                for _ in 0..100 {
+                                    asr::timer::skip_split();
+                                }
                                 timer::split();
                             }
 
-                            if time_trial_state_pair.current == TimeTrialState::None
-                                && time_trial_igt_pair.current != time_trial_igt_pair.old
+                            if split_checkpoints(&checkpoint_pair, &settings) {
+                                // check if it should skip the split because of a negative split time
+                                if settings.time_trial_skip_negative
+                                    && settings.time_trial_discount_bonus
+                                    && last_time_trial_split_time > igt_with_bonus
+                                {
+                                    asr::timer::skip_split();
+                                } else {
+                                    asr::timer::split();
+                                    last_time_trial_split_time = igt_with_bonus;
+                                }
+                            }
+
+                            // reset on trial set to None or return to stage select
+                            if (time_trial_state_pair.current == TimeTrialState::None
+                                && time_trial_igt_pair.current != time_trial_igt_pair.old)
+                                || (stage_pair.current != stage_pair.old
+                                    && (stage_pair.current == Stages::StageSelect
+                                        || stage_pair.current == Stages::StageSelectPast))
                             {
                                 timer::reset();
                             }
@@ -247,6 +272,12 @@ struct Settings {
     /// Discount Bonus Time on Time Trials
     #[default = true]
     time_trial_discount_bonus: bool,
+
+    /// Skip Negative Split Times on Time Trials
+    ///
+    /// This way the delta column and sum of best will be more consistent
+    #[default = true]
+    time_trial_skip_negative: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -375,9 +406,9 @@ fn enable_full_game_level_splits(watchers: &Watchers) -> bool {
             && stage_pair.old == Stages::PacVillage);
 }
 
-fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) {
+fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) -> bool {
     if !settings.split_checkpoint || !checkpoints_pair.changed() || checkpoints_pair.decreased() {
-        return;
+        return false;
     }
 
     let start_skip = match checkpoints_pair.old {
@@ -386,8 +417,9 @@ fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) {
     };
     let split_goal = checkpoints_pair.current;
 
+    // skip how many checkpoints were skipped
     for _ in start_skip..(split_goal - 1) {
         asr::timer::skip_split();
     }
-    asr::timer::split();
+    true
 }
