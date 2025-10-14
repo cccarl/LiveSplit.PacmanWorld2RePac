@@ -160,17 +160,19 @@ pub fn update_watchers(
             );
         }
         TimerMode::IL => {
-            let stage_manager_state_int = addresses
-                .stage_manager_state
-                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                .unwrap_or_default();
-            let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
-            watchers.stage_state.update_infallible(stage_manager_state);
+            if level_id != Stages::StageSelect && level_id != Stages::StageSelectPast {
+                let stage_manager_state_int = addresses
+                    .stage_manager_state
+                    .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                    .unwrap_or_default();
+                let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
+                watchers.stage_state.update_infallible(stage_manager_state);
 
-            asr::timer::set_variable(
-                "Stage Manager State",
-                stage_state_to_string(stage_manager_state),
-            );
+                asr::timer::set_variable(
+                    "Stage Manager State",
+                    stage_state_to_string(stage_manager_state),
+                );
+            }
         }
         TimerMode::FullGame => {
             let is_loading = addresses
