@@ -33,13 +33,14 @@ async fn main() {
                 let mut enable_il_restart = false;
                 let mut enable_level_split = false;
                 let mut last_time_trial_split_time: f64 = 0.;
+                let mut highest_boss_phase_split = 0;
 
                 // Perform memory scanning to look for the addresses we need
-                let memory = retry(|| Memory::init(&process)).await;
+                let mut memory = retry(|| Memory::init(&process)).await;
                 loop {
                     // MAIN LOOP
                     settings.update();
-                    update_watchers(&process, &memory, &mut watchers, &settings);
+                    update_watchers(&process, &mut memory, &mut watchers, &settings);
 
                     // get memory values
                     let is_loading_pair = watchers.is_loading.pair.unwrap_or_default();
@@ -89,11 +90,13 @@ async fn main() {
                         TimerMode::IL => {
                             let stage_state_pair = watchers.stage_state.pair.unwrap_or_default();
                             let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
+                            let boss_phase_pair = watchers.boss_state.pair.unwrap_or_default();
 
                             // 3 cases that enable timer start:
                             // * restart from menu while player is not dead and checkpoint is -1 (works on stage start before checkpoints)
                             // * checkpoint returns to -1 while stage state is "pac dead"
                             // * start from level select
+                            // TODO fix submatine levels
                             if (stage_state_pair.old == StageState::Pause
                                 && stage_state_pair.current == StageState::PacDead
                                 && player_state_pair.current != PlayerState::Dead
@@ -101,8 +104,7 @@ async fn main() {
                                 || (checkpoint_pair.changed()
                                     && checkpoint_pair.current == -1
                                     && stage_state_pair.current == StageState::PacDead)
-                                || ((player_state_pair.old == PlayerState::StageInit
-                                    || player_state_pair.old == PlayerState::CutIn)
+                                || (player_state_pair.old == PlayerState::StageInit
                                     && (player_state_pair.current == PlayerState::Control
                                         || player_state_pair.current == PlayerState::Shooting))
                             {
@@ -121,6 +123,7 @@ async fn main() {
                                 asr::timer::resume_game_time();
                                 asr::timer::set_game_time(Duration::seconds(0));
                                 enable_il_restart = false;
+                                highest_boss_phase_split = 0;
                             }
 
                             if player_state_pair.current != player_state_pair.old
@@ -135,13 +138,20 @@ async fn main() {
                                 asr::timer::split();
                             }
 
-                            if split_checkpoints(&checkpoint_pair, &settings) {
+                            if split_checkpoints(&checkpoint_pair, &settings)
+                                || split_boss_phase(
+                                    &boss_phase_pair,
+                                    &settings,
+                                    &mut highest_boss_phase_split,
+                                )
+                            {
                                 asr::timer::split();
                             }
                         }
                         TimerMode::TimeTrial => {
                             timer::pause_game_time();
                             let checkpoint_pair = watchers.checkpoint.pair.unwrap_or_default();
+                            let boss_phase_pair = watchers.boss_state.pair.unwrap_or_default();
                             let stage_pair = watchers.level_id.pair.unwrap_or_default();
                             let igt_with_bonus = time_trial_igt_pair.current
                                 - (time_trial_bonus_pair.current as f64);
@@ -159,6 +169,7 @@ async fn main() {
                             {
                                 timer::start();
                                 last_time_trial_split_time = 0.;
+                                highest_boss_phase_split = 0;
                             }
 
                             if time_trial_state_pair.old != TimeTrialState::End
@@ -182,6 +193,14 @@ async fn main() {
                                     asr::timer::split();
                                     last_time_trial_split_time = igt_with_bonus;
                                 }
+                            }
+
+                            if split_boss_phase(
+                                &boss_phase_pair,
+                                &settings,
+                                &mut highest_boss_phase_split,
+                            ) {
+                                asr::timer::split();
                             }
 
                             // reset on trial set to None or return to stage select
@@ -255,6 +274,10 @@ struct Settings {
     /// Individual Level End
     #[default = true]
     split_il: bool,
+
+    /// Individual Level Boss Phase
+    #[default = false]
+    split_boss_phase: bool,
 
     /// Individual Level Checkpoints
     ///
@@ -350,7 +373,7 @@ struct Watchers {
     time_trial_bonus_time: Watcher<u32>,
     spooky_qte_success: Watcher<bool>,
     tocman_hp: Watcher<i32>,
-    tocman_state: Watcher<u32>,
+    boss_state: Watcher<u32>,
     player_state: Watcher<PlayerState>,
     stage_state: Watcher<StageState>,
 }
@@ -391,10 +414,10 @@ fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled
 
     // tocman final hit split
     let tocman_hp_pair = watchers.tocman_hp.pair.unwrap_or_default();
-    let tocman_state_pair = watchers.tocman_state.pair.unwrap_or_default();
+    let boss_state_pair = watchers.boss_state.pair.unwrap_or_default();
     return tocman_hp_pair.changed()
         && tocman_hp_pair.current == 0
-        && tocman_state_pair.current == 3
+        && boss_state_pair.current == 3
         && level_pair.current == Stages::Stage6_5
         && settings.split_tocman;
 }
@@ -426,4 +449,24 @@ fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) -> bool 
         asr::timer::skip_split();
     }
     true
+}
+
+fn split_boss_phase(
+    boss_phase_pair: &Pair<u32>,
+    settings: &Settings,
+    highest_phase: &mut u32,
+) -> bool {
+    if !settings.split_boss_phase || !boss_phase_pair.changed() || boss_phase_pair.decreased() {
+        return false;
+    }
+
+    if boss_phase_pair.current > 1
+        && boss_phase_pair.current == boss_phase_pair.old + 1
+        && *highest_phase < boss_phase_pair.current
+    {
+        asr::print_message("um split?");
+        *highest_phase = boss_phase_pair.current;
+        return true;
+    }
+    false
 }

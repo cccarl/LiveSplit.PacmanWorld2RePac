@@ -19,8 +19,10 @@ pub struct Memory {
     time_trial_state: UnityPointer<2>,
     time_trial_bonus_list_pointer: UnityPointer<2>,
     spooky_qte_success: UnityPointer<3>,
+    // conviniently all bosses are inherited from "BossBase" and use "m_state" as their current phase
+    // only detail is that their offsets in the pointer path are different so they are refreshed on a level change
+    boss_state: UnityPointer<3>,
     tocman_hp: UnityPointer<3>,
-    tocman_state: UnityPointer<3>,
     players_array: UnityPointer<3>,
     stage_manager_state: UnityPointer<3>,
 }
@@ -46,8 +48,8 @@ impl Memory {
             UnityPointer::new("TimeAttackManager", 1, &["s_sInstance", "m_bonusTimeList"]);
         let spooky_qte_success =
             UnityPointer::new("BossSpooky", 3, &["s_sInstance", "m_qteSuccess"]);
+        let boss_state = UnityPointer::new("BossBase", 1, &["s_sInstance", "m_state"]);
         let tocman_hp = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_life"]);
-        let tocman_state = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_state"]);
         let players_array = UnityPointer::new("PlayerManager", 2, &["s_sInstance", "m_players"]);
         let stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
 
@@ -65,17 +67,22 @@ impl Memory {
             time_trial_state,
             time_trial_bonus_list_pointer,
             spooky_qte_success,
+            boss_state,
             tocman_hp,
-            tocman_state,
             players_array,
             stage_manager_state,
         })
+    }
+
+    pub fn refresh_pointers(&mut self) {
+        self.boss_state = UnityPointer::new("BossBase", 1, &["s_sInstance", "m_state"]);
+        self.stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
     }
 }
 
 pub fn update_watchers(
     game: &Process,
-    addresses: &Memory,
+    addresses: &mut Memory,
     watchers: &mut Watchers,
     settings: &Settings,
 ) {
@@ -85,6 +92,18 @@ pub fn update_watchers(
         .unwrap_or_default()
         .into();
     watchers.level_id.update_infallible(level_id);
+
+    // refresh pointer paths on level change
+    let curr_level_pair = watchers.level_id.pair.unwrap_or_default();
+    if curr_level_pair.current != curr_level_pair.old {
+        addresses.refresh_pointers();
+    }
+
+    let is_loading = addresses
+        .is_loading
+        .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    watchers.is_loading.update_infallible(is_loading);
 
     let checkpoint = addresses
         .checkpoint
@@ -103,6 +122,11 @@ pub fn update_watchers(
         asr::timer::set_variable("Player State", player_state_to_string(player_state));
     }
 
+    if is_loading {
+        asr::timer::set_variable("Loading", "True");
+    } else {
+        asr::timer::set_variable("Loading", "False");
+    }
     asr::timer::set_variable("LevelEnum", level_id.to_string());
     asr::timer::set_variable_int("Checkpoint", checkpoint);
 
@@ -136,6 +160,13 @@ pub fn update_watchers(
             watchers
                 .time_trial_state
                 .update_infallible(time_trial_state);
+
+            let boss_state = get_boss_state(&settings, &game, &addresses, &level_id);
+            watchers.boss_state.update_infallible(boss_state);
+
+            if settings.split_boss_phase {
+                asr::timer::set_variable_int("Boss State", boss_state);
+            }
 
             if let Ok(list_pointer) = bonus_list_address_res {
                 let time_trial_bonus = calculate_time_bonus(game, list_pointer);
@@ -173,14 +204,23 @@ pub fn update_watchers(
                     stage_state_to_string(stage_manager_state),
                 );
             }
+
+            if level_id == Stages::Stage6_5 {
+                let tocman_hp = addresses
+                    .tocman_hp
+                    .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                    .unwrap_or_default();
+                watchers.tocman_hp.update_infallible(tocman_hp);
+                asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
+            }
+
+            let boss_state = get_boss_state(&settings, &game, &addresses, &level_id);
+            watchers.boss_state.update_infallible(boss_state);
+            if settings.split_boss_phase {
+                asr::timer::set_variable_int("Boss State", boss_state);
+            }
         }
         TimerMode::FullGame => {
-            let is_loading = addresses
-                .is_loading
-                .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                .unwrap_or_default();
-            watchers.is_loading.update_infallible(is_loading);
-
             // get the loading animation progress from the UI for a more accurate (normal) level start time
             let loading_ui_add_res = addresses.loadscreen_ui_pointer.deref::<u64>(
                 game,
@@ -221,20 +261,7 @@ pub fn update_watchers(
                     .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
                     .unwrap_or_default();
                 watchers.tocman_hp.update_infallible(tocman_hp);
-
-                let tocman_state = addresses
-                    .tocman_state
-                    .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                    .unwrap_or_default();
-                watchers.tocman_state.update_infallible(tocman_state);
                 asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
-                asr::timer::set_variable_int("Toc-Man State", tocman_state);
-            }
-
-            if is_loading {
-                asr::timer::set_variable("Loading", "True");
-            } else {
-                asr::timer::set_variable("Loading", "False");
             }
         }
     }
@@ -359,4 +386,37 @@ fn stage_state_to_string(state: StageState) -> &'static str {
         StageState::Exit => "Exit",
         StageState::Unknown => "Unknown",
     }
+}
+
+fn get_boss_state(
+    settings: &Settings,
+    game: &Process,
+    addresses: &Memory,
+    level_id: &Stages,
+) -> u32 {
+    let mut boss_state = 0;
+
+    if settings.split_boss_phase
+        && (*level_id == Stages::Stage1_4
+            || *level_id == Stages::Stage2_4
+            || *level_id == Stages::Stage3_4
+            || *level_id == Stages::Stage4_4
+            || *level_id == Stages::Stage5_4
+            || *level_id == Stages::Stage6_4
+            || *level_id == Stages::Stage6_5
+            || *level_id == Stages::Stage1_4Past
+            || *level_id == Stages::Stage2_4Past
+            || *level_id == Stages::Stage3_4Past
+            || *level_id == Stages::Stage4_4Past
+            || *level_id == Stages::Stage5_4Past
+            || *level_id == Stages::Stage6_4Past
+            || *level_id == Stages::Stage6_5)
+    {
+        boss_state = addresses
+            .boss_state
+            .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+            .unwrap_or_default();
+    }
+
+    boss_state
 }
