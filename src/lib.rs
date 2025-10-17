@@ -101,14 +101,18 @@ async fn main() {
                                 || (checkpoint_pair.changed()
                                     && checkpoint_pair.current == -1
                                     && stage_state_pair.current == StageState::PacDead)
-                                || (player_state_pair.old == PlayerState::StageInit
-                                    && player_state_pair.current == PlayerState::Control)
+                                || ((player_state_pair.old == PlayerState::StageInit
+                                    || player_state_pair.old == PlayerState::CutIn)
+                                    && (player_state_pair.current == PlayerState::Control
+                                        || player_state_pair.current == PlayerState::Shooting))
                             {
                                 enable_il_restart = true;
                             }
 
-                            if player_state_pair.old != PlayerState::Control
-                                && player_state_pair.current == PlayerState::Control
+                            if ((player_state_pair.old != PlayerState::Control
+                                && player_state_pair.current == PlayerState::Control)
+                                || player_state_pair.old != PlayerState::Shooting
+                                    && player_state_pair.current == PlayerState::Shooting)
                                 && enable_il_restart
                                 && settings.start_il
                             {
