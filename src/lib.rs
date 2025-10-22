@@ -73,7 +73,7 @@ async fn main() {
                                 timer::start();
                                 // timing starts on difficulty select so we manually add the animation time before the loading starts
                                 // if i manage to detect that from memory then this will be removed
-                                timer::set_game_time(Duration::new(3, 333_333_333));
+                                timer::set_game_time(Duration::new(3, 433_333_333));
                             }
 
                             // only do level splits if player actually completed the level
