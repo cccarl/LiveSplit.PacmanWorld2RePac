@@ -25,6 +25,8 @@ pub struct Memory {
     tocman_hp: UnityPointer<3>,
     players_array: UnityPointer<3>,
     stage_manager_state: UnityPointer<3>,
+    // WIP
+    //title_scene_step: UnityPointer<3>,
 }
 
 impl Memory {
@@ -54,7 +56,13 @@ impl Memory {
         let stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
 
         // TODO cope for a better autostart
-        // "SceneBase : TitleScene
+        // GameLevelSelect seems to be the UI to pick difficulty but theres no reference to it on a field...
+        // reding "private GameLevelSelect.EStep m_step;" would be as perfect of a start as it could be
+
+        // GameUI (singleton) has "private GameObject m_goGameLevelPrefab;", does this lead to the GameLevelSelect somehow?
+
+        // 2nd best thing thats easy to use but might as well keep using the intro level video if its not frame perfect, this is like half a second off still
+        //let title_scene_step = UnityPointer::new("TitleScene", 2, &["s_sInstance", "m_step"]);
 
         Some(Self {
             il2cpp_module,
@@ -71,6 +79,7 @@ impl Memory {
             tocman_hp,
             players_array,
             stage_manager_state,
+            //title_scene_step,
         })
     }
 
@@ -86,6 +95,12 @@ pub fn update_watchers(
     watchers: &mut Watchers,
     settings: &Settings,
 ) {
+    /* let title_scene_step = addresses
+        .title_scene_step
+        .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or_default();
+    asr::timer::set_variable_int("TITLE STEP", game_level_thing); */
+
     let level_id = addresses
         .level_id
         .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
@@ -161,10 +176,9 @@ pub fn update_watchers(
                 .time_trial_state
                 .update_infallible(time_trial_state);
 
-            let boss_state = get_boss_state(&settings, &game, &addresses, &level_id);
-            watchers.boss_state.update_infallible(boss_state);
-
             if settings.split_boss_phase {
+                let boss_state = get_boss_state(&game, &addresses, &level_id);
+                watchers.boss_state.update_infallible(boss_state);
                 asr::timer::set_variable_int("Boss State", boss_state);
             }
 
@@ -214,9 +228,9 @@ pub fn update_watchers(
                 asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
             }
 
-            let boss_state = get_boss_state(&settings, &game, &addresses, &level_id);
-            watchers.boss_state.update_infallible(boss_state);
             if settings.split_boss_phase {
+                let boss_state = get_boss_state(&game, &addresses, &level_id);
+                watchers.boss_state.update_infallible(boss_state);
                 asr::timer::set_variable_int("Boss State", boss_state);
             }
         }
@@ -262,6 +276,12 @@ pub fn update_watchers(
                     .unwrap_or_default();
                 watchers.tocman_hp.update_infallible(tocman_hp);
                 asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
+
+                if settings.split_tocman {
+                    let boss_state = get_boss_state(&game, &addresses, &level_id);
+                    watchers.boss_state.update_infallible(boss_state);
+                    asr::timer::set_variable_int("Boss State", boss_state);
+                }
             }
         }
     }
@@ -388,29 +408,23 @@ fn stage_state_to_string(state: StageState) -> &'static str {
     }
 }
 
-fn get_boss_state(
-    settings: &Settings,
-    game: &Process,
-    addresses: &Memory,
-    level_id: &Stages,
-) -> u32 {
+fn get_boss_state(game: &Process, addresses: &Memory, level_id: &Stages) -> u32 {
     let mut boss_state = 0;
 
-    if settings.split_boss_phase
-        && (*level_id == Stages::Stage1_4
-            || *level_id == Stages::Stage2_4
-            || *level_id == Stages::Stage3_4
-            || *level_id == Stages::Stage4_4
-            || *level_id == Stages::Stage5_4
-            || *level_id == Stages::Stage6_4
-            || *level_id == Stages::Stage6_5
-            || *level_id == Stages::Stage1_4Past
-            || *level_id == Stages::Stage2_4Past
-            || *level_id == Stages::Stage3_4Past
-            || *level_id == Stages::Stage4_4Past
-            || *level_id == Stages::Stage5_4Past
-            || *level_id == Stages::Stage6_4Past
-            || *level_id == Stages::Stage6_5)
+    if *level_id == Stages::Stage1_4
+        || *level_id == Stages::Stage2_4
+        || *level_id == Stages::Stage3_4
+        || *level_id == Stages::Stage4_4
+        || *level_id == Stages::Stage5_4
+        || *level_id == Stages::Stage6_4
+        || *level_id == Stages::Stage6_5
+        || *level_id == Stages::Stage1_4Past
+        || *level_id == Stages::Stage2_4Past
+        || *level_id == Stages::Stage3_4Past
+        || *level_id == Stages::Stage4_4Past
+        || *level_id == Stages::Stage5_4Past
+        || *level_id == Stages::Stage6_4Past
+        || *level_id == Stages::Stage6_5
     {
         boss_state = addresses
             .boss_state
