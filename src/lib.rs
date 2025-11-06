@@ -372,7 +372,6 @@ struct Watchers {
     time_trial_state: Watcher<TimeTrialState>,
     time_trial_bonus_time: Watcher<u32>,
     spooky_qte_success: Watcher<bool>,
-    tocman_hp: Watcher<i32>,
     boss_state: Watcher<u32>,
     player_state: Watcher<PlayerState>,
     stage_state: Watcher<StageState>,
@@ -412,12 +411,10 @@ fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled
         return true;
     }
 
-    // tocman final hit split
-    let tocman_hp_pair = watchers.tocman_hp.pair.unwrap_or_default();
+    // tocman defeat split
     let boss_state_pair = watchers.boss_state.pair.unwrap_or_default();
-    return tocman_hp_pair.changed()
-        && tocman_hp_pair.current == 0
-        && boss_state_pair.current == 3
+    return boss_state_pair.changed()
+        && boss_state_pair.current == 4
         && level_pair.current == Stages::Stage6_5
         && settings.split_tocman;
 }
@@ -464,7 +461,6 @@ fn split_boss_phase(
         && boss_phase_pair.current == boss_phase_pair.old + 1
         && *highest_phase < boss_phase_pair.current
     {
-        asr::print_message("um split?");
         *highest_phase = boss_phase_pair.current;
         return true;
     }

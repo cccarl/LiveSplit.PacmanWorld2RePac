@@ -22,11 +22,10 @@ pub struct Memory {
     // conviniently all bosses are inherited from "BossBase" and use "m_state" as their current phase
     // only detail is that their offsets in the pointer path are different so they are refreshed on a level change
     boss_state: UnityPointer<3>,
-    tocman_hp: UnityPointer<3>,
     players_array: UnityPointer<3>,
     stage_manager_state: UnityPointer<3>,
     // WIP
-    //title_scene_step: UnityPointer<3>,
+    /* title_scene_step: UnityPointer<3>, */
 }
 
 impl Memory {
@@ -51,7 +50,6 @@ impl Memory {
         let spooky_qte_success =
             UnityPointer::new("BossSpooky", 3, &["s_sInstance", "m_qteSuccess"]);
         let boss_state = UnityPointer::new("BossBase", 1, &["s_sInstance", "m_state"]);
-        let tocman_hp = UnityPointer::new("BossTocman", 2, &["s_sInstance", "m_life"]);
         let players_array = UnityPointer::new("PlayerManager", 2, &["s_sInstance", "m_players"]);
         let stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
 
@@ -62,7 +60,7 @@ impl Memory {
         // GameUI (singleton) has "private GameObject m_goGameLevelPrefab;", does this lead to the GameLevelSelect somehow?
 
         // 2nd best thing thats easy to use but might as well keep using the intro level video if its not frame perfect, this is like half a second off still
-        //let title_scene_step = UnityPointer::new("TitleScene", 2, &["s_sInstance", "m_step"]);
+        /* let title_scene_step = UnityPointer::new("TitleScene", 2, &["s_sInstance", "m_step"]); */
 
         Some(Self {
             il2cpp_module,
@@ -76,10 +74,9 @@ impl Memory {
             time_trial_bonus_list_pointer,
             spooky_qte_success,
             boss_state,
-            tocman_hp,
             players_array,
             stage_manager_state,
-            //title_scene_step,
+            /* title_scene_step, */
         })
     }
 
@@ -99,7 +96,7 @@ pub fn update_watchers(
         .title_scene_step
         .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
-    asr::timer::set_variable_int("TITLE STEP", game_level_thing); */
+    asr::timer::set_variable_int("TITLE STEP", title_scene_step); */
 
     let level_id = addresses
         .level_id
@@ -219,15 +216,6 @@ pub fn update_watchers(
                 );
             }
 
-            if level_id == Stages::Stage6_5 {
-                let tocman_hp = addresses
-                    .tocman_hp
-                    .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                    .unwrap_or_default();
-                watchers.tocman_hp.update_infallible(tocman_hp);
-                asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
-            }
-
             if settings.split_boss_phase {
                 let boss_state = get_boss_state(&game, &addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
@@ -269,19 +257,10 @@ pub fn update_watchers(
                 );
             }
 
-            if level_id == Stages::Stage6_5 {
-                let tocman_hp = addresses
-                    .tocman_hp
-                    .deref::<i32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                    .unwrap_or_default();
-                watchers.tocman_hp.update_infallible(tocman_hp);
-                asr::timer::set_variable_int("Toc-Man HP", tocman_hp);
-
-                if settings.split_tocman {
-                    let boss_state = get_boss_state(&game, &addresses, &level_id);
-                    watchers.boss_state.update_infallible(boss_state);
-                    asr::timer::set_variable_int("Boss State", boss_state);
-                }
+            if level_id == Stages::Stage6_5 && settings.split_tocman {
+                let boss_state = get_boss_state(&game, &addresses, &level_id);
+                watchers.boss_state.update_infallible(boss_state);
+                asr::timer::set_variable_int("Boss State", boss_state);
             }
         }
     }
