@@ -229,7 +229,8 @@ async fn main() {
                                 timer::start();
                             }
 
-                            if restarting_level && player_state_pair.current == PlayerState::Control {
+                            if restarting_level && player_state_pair.current == PlayerState::Control
+                            {
                                 restarting_level = false;
                             }
 
@@ -243,19 +244,19 @@ async fn main() {
                                 // backup the timer after finishing a level0
                                 time_trial_marathon_timer_acum += current_igt_with_bonus;
                             }
-                            // backup the time during the pause screen if the player restarts level manually
+                            // backup the time during the pause screen if the player restarts level manually, without bonus clocks
                             if (stage_state_pair.old == StageState::Pause
                                 || stage_state_pair.old == StageState::DebugPause)
                                 && stage_state_pair.current == StageState::PacDead
                             {
-                                time_trial_marathon_timer_acum += time_trial_igt_pair.old
-                                    - (time_trial_bonus_pair.current as f64);
+                                time_trial_marathon_timer_acum += time_trial_igt_pair.old;
                                 restarting_level = true;
                             }
 
                             // set the igt
                             if (time_trial_state_pair.current == TimeTrialState::TA
-                                || time_trial_state_pair.current == TimeTrialState::Pause) && !restarting_level
+                                || time_trial_state_pair.current == TimeTrialState::Pause)
+                                && !restarting_level
                             {
                                 timer::set_game_time(Duration::seconds_f64(
                                     time_trial_marathon_timer_acum + current_igt_with_bonus,
@@ -272,7 +273,10 @@ async fn main() {
                                 timer::split();
                             }
 
-                            timer::set_variable_float("IGT Accumulated", time_trial_marathon_timer_acum);
+                            timer::set_variable_float(
+                                "IGT Accumulated",
+                                time_trial_marathon_timer_acum,
+                            );
                         }
                     }
 
