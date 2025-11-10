@@ -143,64 +143,6 @@ pub fn update_watchers(
     asr::timer::set_variable_int("Checkpoint", checkpoint);
 
     match settings.timer_mode.current {
-        TimerMode::TimeTrial => {
-            let bonus_list_address_res = addresses.time_trial_bonus_list_pointer.deref::<u64>(
-                game,
-                &addresses.il2cpp_module,
-                &addresses.game_assembly,
-            );
-
-            let time_trial_igt = addresses
-                .time_trial_igt
-                .deref::<f64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                .unwrap_or_default();
-            watchers.time_trial_igt.update_infallible(time_trial_igt);
-
-            let time_trial_state_raw = addresses
-                .time_trial_state
-                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                .unwrap_or_default();
-            let time_trial_state = match time_trial_state_raw {
-                0 => TimeTrialState::None,
-                1 => TimeTrialState::ReadyInit,
-                2 => TimeTrialState::ReadyWait,
-                3 => TimeTrialState::TA,
-                4 => TimeTrialState::Pause,
-                5 => TimeTrialState::End,
-                _ => TimeTrialState::Unknown,
-            };
-            watchers
-                .time_trial_state
-                .update_infallible(time_trial_state);
-
-            if settings.split_boss_phase {
-                let boss_state = get_boss_state(&game, &addresses, &level_id);
-                watchers.boss_state.update_infallible(boss_state);
-                asr::timer::set_variable_int("Boss State", boss_state);
-            }
-
-            if let Ok(list_pointer) = bonus_list_address_res {
-                let time_trial_bonus = calculate_time_bonus(game, list_pointer);
-                watchers
-                    .time_trial_bonus_time
-                    .update_infallible(time_trial_bonus);
-                asr::timer::set_variable_int("Time Trial Total Bonus", time_trial_bonus);
-            }
-
-            asr::timer::set_variable_float("Time Trial Timer", time_trial_igt);
-            asr::timer::set_variable(
-                "Time Trial State",
-                match time_trial_state {
-                    TimeTrialState::None => "None",
-                    TimeTrialState::ReadyInit => "Ready_Init",
-                    TimeTrialState::ReadyWait => "Ready_Wait",
-                    TimeTrialState::TA => "TA",
-                    TimeTrialState::Pause => "Pause",
-                    TimeTrialState::End => "End",
-                    TimeTrialState::Unknown => "Unknown",
-                },
-            );
-        }
         TimerMode::IL => {
             if level_id != Stages::StageSelect && level_id != Stages::StageSelectPast {
                 let stage_manager_state_int = addresses
@@ -263,6 +205,113 @@ pub fn update_watchers(
                 asr::timer::set_variable_int("Boss State", boss_state);
             }
         }
+        TimerMode::TimeTrial => {
+            let bonus_list_address_res = addresses.time_trial_bonus_list_pointer.deref::<u64>(
+                game,
+                &addresses.il2cpp_module,
+                &addresses.game_assembly,
+            );
+
+            if let Ok(list_pointer) = bonus_list_address_res {
+                let time_trial_bonus = calculate_time_bonus(game, list_pointer);
+                watchers
+                    .time_trial_bonus_time
+                    .update_infallible(time_trial_bonus);
+                asr::timer::set_variable_int("Time Trial Total Bonus", time_trial_bonus);
+            }
+
+            let time_trial_igt = addresses
+                .time_trial_igt
+                .deref::<f64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+            let time_trial_igt_rounded = round_no_std_f64(time_trial_igt, 2);
+            watchers
+                .time_trial_igt
+                .update_infallible(time_trial_igt_rounded);
+
+            let time_trial_state_raw = addresses
+                .time_trial_state
+                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+
+            let time_trial_state = time_trial_state_int_to_enum(time_trial_state_raw);
+            watchers
+                .time_trial_state
+                .update_infallible(time_trial_state);
+
+            if settings.split_boss_phase {
+                let boss_state = get_boss_state(&game, &addresses, &level_id);
+                watchers.boss_state.update_infallible(boss_state);
+                asr::timer::set_variable_int("Boss State", boss_state);
+            }
+
+            asr::timer::set_variable_float("Time Trial Timer", time_trial_igt);
+            time_trial_state_print_var(time_trial_state);
+        }
+        TimerMode::TimeTrialMarathon => {
+            if level_id != Stages::StageSelect && level_id != Stages::StageSelectPast {
+                let stage_manager_state_int = addresses
+                    .stage_manager_state
+                    .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                    .unwrap_or_default();
+                let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
+                watchers.stage_state.update_infallible(stage_manager_state);
+
+                asr::timer::set_variable(
+                    "Stage Manager State",
+                    stage_state_to_string(stage_manager_state),
+                );
+            }
+
+            let bonus_list_address_res = addresses.time_trial_bonus_list_pointer.deref::<u64>(
+                game,
+                &addresses.il2cpp_module,
+                &addresses.game_assembly,
+            );
+
+            if let Ok(list_pointer) = bonus_list_address_res {
+                let time_trial_bonus = calculate_time_bonus(game, list_pointer);
+                watchers
+                    .time_trial_bonus_time
+                    .update_infallible(time_trial_bonus);
+                asr::timer::set_variable_int("Time Trial Total Bonus", time_trial_bonus);
+            }
+
+            let time_trial_igt = addresses
+                .time_trial_igt
+                .deref::<f64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+
+            let time_trial_igt_rounded = round_no_std_f64(time_trial_igt, 2);
+
+            watchers
+                .time_trial_igt
+                .update_infallible(time_trial_igt_rounded);
+
+            let time_trial_state_raw = addresses
+                .time_trial_state
+                .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+                .unwrap_or_default();
+
+            let time_trial_state = time_trial_state_int_to_enum(time_trial_state_raw);
+            watchers
+                .time_trial_state
+                .update_infallible(time_trial_state);
+
+            asr::timer::set_variable_float("Time Trial Timer", time_trial_igt);
+            time_trial_state_print_var(time_trial_state);
+        }
+    }
+}
+
+fn round_no_std_f64(number: f64, digits: u32) -> f64 {
+    let i = (number * (10_u32.pow(digits)) as f64) as i64;
+    let frac = (number * (10_u32.pow(digits)) as f64) - (i as f64);
+
+    if frac >= 0.5 {
+        ((i + 1) as f64) / 100.
+    } else {
+        (i as f64) / 100.
     }
 }
 
@@ -301,7 +350,7 @@ fn get_player1_state(game: &Process, players_pointer: u64) -> PlayerState {
     // so in the array obj, offset 0x20 is the PlayerPacman object we need, position 0
     let player_obj = game.read::<u64>(players_pointer + 0x20).unwrap_or_default();
     // PlayerPacman 0x844 -> m_step, the player's state
-    let player_state_int = game.read::<u32>(player_obj + 0x844).unwrap_or_default();
+    let player_state_int = game.read::<u32>(player_obj + 0x844).unwrap_or(100);
     match player_state_int {
         0 => PlayerState::None,
         1 => PlayerState::Control,
@@ -323,6 +372,7 @@ fn get_player1_state(game: &Process, players_pointer: u64) -> PlayerState {
         17 => PlayerState::StageEnd,
         18 => PlayerState::Shooting,
         19 => PlayerState::Racing,
+        100 => PlayerState::ASRReadError,
         _ => PlayerState::Unknown,
     }
 }
@@ -349,6 +399,7 @@ fn player_state_to_string(player_state: PlayerState) -> &'static str {
         PlayerState::StageEnd => "StageEnd",
         PlayerState::Shooting => "Shooting",
         PlayerState::Racing => "Racing",
+        PlayerState::ASRReadError => "ASR Memory Read Error",
         PlayerState::Unknown => "UNKNOWN",
     }
 }
@@ -412,4 +463,31 @@ fn get_boss_state(game: &Process, addresses: &Memory, level_id: &Stages) -> u32 
     }
 
     boss_state
+}
+
+fn time_trial_state_int_to_enum(time_trial_state_raw: u32) -> TimeTrialState {
+    match time_trial_state_raw {
+        0 => TimeTrialState::None,
+        1 => TimeTrialState::ReadyInit,
+        2 => TimeTrialState::ReadyWait,
+        3 => TimeTrialState::TA,
+        4 => TimeTrialState::Pause,
+        5 => TimeTrialState::End,
+        _ => TimeTrialState::Unknown,
+    }
+}
+
+fn time_trial_state_print_var(time_trial_state: TimeTrialState) {
+    asr::timer::set_variable(
+        "Time Trial State",
+        match time_trial_state {
+            TimeTrialState::None => "None",
+            TimeTrialState::ReadyInit => "Ready_Init",
+            TimeTrialState::ReadyWait => "Ready_Wait",
+            TimeTrialState::TA => "TA",
+            TimeTrialState::Pause => "Pause",
+            TimeTrialState::End => "End",
+            TimeTrialState::Unknown => "Unknown",
+        },
+    );
 }

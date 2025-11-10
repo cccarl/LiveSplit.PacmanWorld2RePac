@@ -7,7 +7,7 @@ use asr::{
     future::{next_tick, retry},
     settings::{gui::Title, Gui},
     time::Duration,
-    timer::{self},
+    timer::{self, TimerState},
     watcher::{Pair, Watcher},
     Process,
 };
@@ -34,6 +34,9 @@ async fn main() {
                 let mut enable_level_split = false;
                 let mut last_time_trial_split_time: f64 = 0.;
                 let mut highest_boss_phase_split = 0;
+
+                let mut time_trial_marathon_timer_acum: f64 = 0.;
+                let mut restarting_level = false;
 
                 // Perform memory scanning to look for the addresses we need
                 let mut memory = retry(|| Memory::init(&process)).await;
@@ -213,6 +216,64 @@ async fn main() {
                                 timer::reset();
                             }
                         }
+                        TimerMode::TimeTrialMarathon => {
+                            timer::pause_game_time();
+                            let stage_state_pair = watchers.stage_state.pair.unwrap_or_default();
+
+                            if time_trial_state_pair.current != time_trial_state_pair.old
+                                && time_trial_state_pair.current == TimeTrialState::TA
+                                && player_state_pair.current == PlayerState::Control
+                                && timer::state() == TimerState::NotRunning
+                            {
+                                time_trial_marathon_timer_acum = 0.;
+                                timer::start();
+                            }
+
+                            if restarting_level && player_state_pair.current == PlayerState::Control {
+                                restarting_level = false;
+                            }
+
+                            let current_igt_with_bonus = time_trial_igt_pair.current
+                                - (time_trial_bonus_pair.current as f64);
+
+                            // accum igt from previous levels/runs
+                            if time_trial_state_pair.current != time_trial_state_pair.old
+                                && time_trial_state_pair.current == TimeTrialState::End
+                            {
+                                // backup the timer after finishing a level0
+                                time_trial_marathon_timer_acum += current_igt_with_bonus;
+                            }
+                            // backup the time during the pause screen if the player restarts level manually
+                            if (stage_state_pair.old == StageState::Pause
+                                || stage_state_pair.old == StageState::DebugPause)
+                                && stage_state_pair.current == StageState::PacDead
+                            {
+                                time_trial_marathon_timer_acum += time_trial_igt_pair.old
+                                    - (time_trial_bonus_pair.current as f64);
+                                restarting_level = true;
+                            }
+
+                            // set the igt
+                            if (time_trial_state_pair.current == TimeTrialState::TA
+                                || time_trial_state_pair.current == TimeTrialState::Pause) && !restarting_level
+                            {
+                                timer::set_game_time(Duration::seconds_f64(
+                                    time_trial_marathon_timer_acum + current_igt_with_bonus,
+                                ));
+                            } else {
+                                timer::set_game_time(Duration::seconds_f64(
+                                    time_trial_marathon_timer_acum,
+                                ));
+                            }
+
+                            if time_trial_state_pair.current != time_trial_state_pair.old
+                                && time_trial_state_pair.current == TimeTrialState::End
+                            {
+                                timer::split();
+                            }
+
+                            timer::set_variable_float("IGT Accumulated", time_trial_marathon_timer_acum);
+                        }
                     }
 
                     next_tick().await;
@@ -231,6 +292,8 @@ pub enum TimerMode {
     IL,
     /// Time Trial
     TimeTrial,
+    /// Time Trial Marathon
+    TimeTrialMarathon,
 }
 
 #[derive(Gui)]
@@ -342,6 +405,7 @@ enum PlayerState {
     StageEnd,
     Shooting,
     Racing,
+    ASRReadError,
     Unknown,
 }
 
