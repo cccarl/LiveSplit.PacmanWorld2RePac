@@ -12,7 +12,7 @@ use asr::{
     Process,
 };
 use memory::{update_watchers, Memory};
-use stages::Stage;
+use stages::GameStage;
 
 asr::async_main!(stable);
 asr::panic_handler!();
@@ -209,7 +209,7 @@ async fn main() {
                             // reset on trial set to None or return to stage select
                             if (time_trial_state_pair.current == TimeTrialState::None
                                 && time_trial_igt_pair.current != time_trial_igt_pair.old)
-                                || (stage_pair.current != stage_pair.old
+                                || (stage_pair.changed()
                                     && level_is_stage_select(stage_pair.current))
                             {
                                 timer::reset();
@@ -434,7 +434,7 @@ enum StageState {
 struct Watchers {
     is_loading: Watcher<bool>,
     load_ui_progress: Watcher<f32>,
-    level_id: Watcher<Stage>,
+    level_id: Watcher<GameStage>,
     checkpoint: Watcher<i32>,
     time_trial_igt: Watcher<f64>,
     time_trial_state: Watcher<TimeTrialState>,
@@ -452,22 +452,24 @@ fn start(watchers: &Watchers, settings: &Settings) -> bool {
         return false;
     };
 
-    if level_pair.current == level_pair.old {
+    if !level_pair.changed() {
         return false;
     }
 
-    level_pair.current == Stage::Movie && level_pair.old == Stage::Title && settings.start_new_game
+    level_pair.current == GameStage::Movie
+        && level_pair.old == GameStage::Title
+        && settings.start_new_game
 }
 
 fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled: bool) -> bool {
     // level exit split
     let level_pair = watchers.level_id.pair.unwrap_or_default();
 
-    if level_pair.current != level_pair.old && level_split_enabled {
+    if level_pair.changed() && level_split_enabled {
         match level_pair.current {
-            Stage::StageSelect => return settings.split_on_level_complete,
-            Stage::StageSelectPast => return settings.split_on_past_level_complete,
-            Stage::StageSelectSonic => return settings.split_on_level_complete,
+            GameStage::StageSelect => return settings.split_on_level_complete,
+            GameStage::StageSelectPast => return settings.split_on_past_level_complete,
+            GameStage::StageSelectSonic => return settings.split_on_level_complete,
             _ => return false,
         }
     };
@@ -480,21 +482,21 @@ fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled
 
     // tocman defeat split
     let boss_state_pair = watchers.boss_state.pair.unwrap_or_default();
-    return boss_state_pair.changed()
+    boss_state_pair.changed()
         && boss_state_pair.current == 4
-        && level_pair.current == Stage::Stage6_5
-        && settings.split_tocman;
+        && level_pair.current == GameStage::Stage6_5
+        && settings.split_tocman
 }
 
 fn enable_full_game_level_splits(watchers: &Watchers) -> bool {
     let player_state_pair = watchers.player_state.pair.unwrap_or_default();
     let stage_pair = watchers.level_id.pair.unwrap_or_default();
 
-    return (player_state_pair.current == PlayerState::Goal
+    (player_state_pair.current == PlayerState::Goal
         && player_state_pair.current != player_state_pair.old)
-        || ((stage_pair.current == Stage::StageSelect
-            || stage_pair.current == Stage::StageSelectPast)
-            && stage_pair.old == Stage::PacVillage);
+        || ((stage_pair.current == GameStage::StageSelect
+            || stage_pair.current == GameStage::StageSelectPast)
+            && stage_pair.old == GameStage::PacVillage)
 }
 
 fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) -> bool {
@@ -534,8 +536,8 @@ fn split_boss_phase(
     false
 }
 
-fn level_is_stage_select(stage: Stage) -> bool {
-    stage == Stage::StageSelect
-        || stage == Stage::StageSelectPast
-        || stage == Stage::StageSelectSonic
+fn level_is_stage_select(stage: GameStage) -> bool {
+    stage == GameStage::StageSelect
+        || stage == GameStage::StageSelectPast
+        || stage == GameStage::StageSelectSonic
 }

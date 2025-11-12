@@ -1,5 +1,5 @@
 use crate::{
-    stages::Stage, PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers,
+    stages::GameStage, PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers,
 };
 use asr::{
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
@@ -55,10 +55,9 @@ impl Memory {
         let stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
 
         // init the player state offset in the PlayerPacman class
-        let pacman_class_opt = game_assembly.get_class(&game, &il2cpp_module, "PlayerPacman");
+        let pacman_class_opt = game_assembly.get_class(game, &il2cpp_module, "PlayerPacman");
         let player_state_offset = if let Some(player_class) = pacman_class_opt {
-            let offset_opt = player_class.get_field_offset(&game, &il2cpp_module, "m_step");
-            offset_opt
+            player_class.get_field_offset(game, &il2cpp_module, "m_step")
         } else {
             None
         };
@@ -99,9 +98,9 @@ impl Memory {
     pub fn refresh_player_state_offset(&mut self, game: &Process) {
         let pacman_class_opt =
             self.game_assembly
-                .get_class(&game, &self.il2cpp_module, "PlayerPacman");
+                .get_class(game, &self.il2cpp_module, "PlayerPacman");
         if let Some(pac) = pacman_class_opt {
-            let offset_opt = pac.get_field_offset(&game, &self.il2cpp_module, "m_step");
+            let offset_opt = pac.get_field_offset(game, &self.il2cpp_module, "m_step");
             self.player_state_offset = offset_opt;
         } else {
             self.player_state_offset = None;
@@ -167,7 +166,7 @@ pub fn update_watchers(
 
     match settings.timer_mode.current {
         TimerMode::IL => {
-            if level_id != Stage::StageSelect && level_id != Stage::StageSelectPast {
+            if level_id != GameStage::StageSelect && level_id != GameStage::StageSelectPast {
                 let stage_manager_state_int = addresses
                     .stage_manager_state
                     .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
@@ -182,7 +181,7 @@ pub fn update_watchers(
             }
 
             if settings.split_boss_phase {
-                let boss_state = get_boss_state(&game, &addresses, &level_id);
+                let boss_state = get_boss_state(game, addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
                 asr::timer::set_variable_int("Boss State", boss_state);
             }
@@ -205,7 +204,7 @@ pub fn update_watchers(
                 asr::timer::set_variable_float("UI Load Anim Progress", load_progress_pc);
             }
 
-            if level_id == Stage::Stage6_4 {
+            if level_id == GameStage::Stage6_4 {
                 let spooky_qte_success = addresses
                     .spooky_qte_success
                     .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
@@ -222,8 +221,8 @@ pub fn update_watchers(
                 );
             }
 
-            if level_id == Stage::Stage6_5 && settings.split_tocman {
-                let boss_state = get_boss_state(&game, &addresses, &level_id);
+            if level_id == GameStage::Stage6_5 && settings.split_tocman {
+                let boss_state = get_boss_state(game, addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
                 asr::timer::set_variable_int("Boss State", boss_state);
             }
@@ -263,7 +262,7 @@ pub fn update_watchers(
                 .update_infallible(time_trial_state);
 
             if settings.split_boss_phase {
-                let boss_state = get_boss_state(&game, &addresses, &level_id);
+                let boss_state = get_boss_state(game, addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
                 asr::timer::set_variable_int("Boss State", boss_state);
             }
@@ -272,7 +271,7 @@ pub fn update_watchers(
             time_trial_state_print_var(time_trial_state);
         }
         TimerMode::TimeTrialMarathon => {
-            if level_id != Stage::StageSelect && level_id != Stage::StageSelectPast {
+            if level_id != GameStage::StageSelect && level_id != GameStage::StageSelectPast {
                 let stage_manager_state_int = addresses
                     .stage_manager_state
                     .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
@@ -473,23 +472,23 @@ fn stage_state_to_string(state: StageState) -> &'static str {
     }
 }
 
-fn get_boss_state(game: &Process, addresses: &Memory, level_id: &Stage) -> u32 {
+fn get_boss_state(game: &Process, addresses: &Memory, level_id: &GameStage) -> u32 {
     let mut boss_state = 0;
 
-    if *level_id == Stage::Stage1_4
-        || *level_id == Stage::Stage2_4
-        || *level_id == Stage::Stage3_4
-        || *level_id == Stage::Stage4_4
-        || *level_id == Stage::Stage5_4
-        || *level_id == Stage::Stage6_4
-        || *level_id == Stage::Stage6_5
-        || *level_id == Stage::Stage1_4Past
-        || *level_id == Stage::Stage2_4Past
-        || *level_id == Stage::Stage3_4Past
-        || *level_id == Stage::Stage4_4Past
-        || *level_id == Stage::Stage5_4Past
-        || *level_id == Stage::Stage6_4Past
-        || *level_id == Stage::Stage6_5
+    if *level_id == GameStage::Stage1_4
+        || *level_id == GameStage::Stage2_4
+        || *level_id == GameStage::Stage3_4
+        || *level_id == GameStage::Stage4_4
+        || *level_id == GameStage::Stage5_4
+        || *level_id == GameStage::Stage6_4
+        || *level_id == GameStage::Stage6_5
+        || *level_id == GameStage::Stage1_4Past
+        || *level_id == GameStage::Stage2_4Past
+        || *level_id == GameStage::Stage3_4Past
+        || *level_id == GameStage::Stage4_4Past
+        || *level_id == GameStage::Stage5_4Past
+        || *level_id == GameStage::Stage6_4Past
+        || *level_id == GameStage::Stage6_5
     {
         boss_state = addresses
             .boss_state
