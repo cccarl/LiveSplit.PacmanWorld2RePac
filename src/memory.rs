@@ -23,6 +23,7 @@ pub struct Memory {
     // only detail is that their offsets in the pointer path are different so they are refreshed on a level change
     boss_state: UnityPointer<3>,
     players_array: UnityPointer<3>,
+    player_state_offset: Option<u32>,
     stage_manager_state: UnityPointer<3>,
     // WIP
     /* title_scene_step: UnityPointer<3>, */
@@ -53,6 +54,15 @@ impl Memory {
         let players_array = UnityPointer::new("PlayerManager", 2, &["s_sInstance", "m_players"]);
         let stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
 
+        // init the player state offset in the PlayerPacman class
+        let pacman_class_opt = game_assembly.get_class(&game, &il2cpp_module, "PlayerPacman");
+        let player_state_offset = if let Some(player_class) = pacman_class_opt {
+            let offset_opt = player_class.get_field_offset(&game, &il2cpp_module, "m_step");
+            offset_opt
+        } else {
+            None
+        };
+
         // TODO cope for a better autostart
         // GameLevelSelect seems to be the UI to pick difficulty but theres no reference to it on a field...
         // reding "private GameLevelSelect.EStep m_step;" would be as perfect of a start as it could be
@@ -75,6 +85,7 @@ impl Memory {
             spooky_qte_success,
             boss_state,
             players_array,
+            player_state_offset,
             stage_manager_state,
             /* title_scene_step, */
         })
@@ -83,6 +94,18 @@ impl Memory {
     pub fn refresh_pointers(&mut self) {
         self.boss_state = UnityPointer::new("BossBase", 1, &["s_sInstance", "m_state"]);
         self.stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
+    }
+
+    pub fn refresh_player_state_offset(&mut self, game: &Process) {
+        let pacman_class_opt =
+            self.game_assembly
+                .get_class(&game, &self.il2cpp_module, "PlayerPacman");
+        if let Some(pac) = pacman_class_opt {
+            let offset_opt = pac.get_field_offset(&game, &self.il2cpp_module, "m_step");
+            self.player_state_offset = offset_opt;
+        } else {
+            self.player_state_offset = None;
+        };
     }
 }
 
@@ -101,7 +124,7 @@ pub fn update_watchers(
     let level_id = addresses
         .level_id
         .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default()
+        .unwrap_or(100_000)
         .into();
     watchers.level_id.update_infallible(level_id);
 
@@ -129,7 +152,7 @@ pub fn update_watchers(
         &addresses.game_assembly,
     );
     if let Ok(players_array_pointer) = players_array_pointer_res {
-        let player_state = get_player1_state(game, players_array_pointer);
+        let player_state = get_player1_state(game, players_array_pointer, addresses);
         watchers.player_state.update_infallible(player_state);
         asr::timer::set_variable("Player State", player_state_to_string(player_state));
     }
@@ -345,12 +368,23 @@ fn calculate_time_bonus(game: &Process, bonus_list_pointer: u64) -> u32 {
     total_bonus
 }
 
-fn get_player1_state(game: &Process, players_pointer: u64) -> PlayerState {
+fn get_player1_state(game: &Process, players_pointer: u64, addreses: &mut Memory) -> PlayerState {
     // all active "PlayerPacman"s are in an array, probably for 2p compatibility
     // so in the array obj, offset 0x20 is the PlayerPacman object we need, position 0
     let player_obj = game.read::<u64>(players_pointer + 0x20).unwrap_or_default();
-    // PlayerPacman 0x844 -> m_step, the player's state
-    let player_state_int = game.read::<u32>(player_obj + 0x844).unwrap_or(100);
+
+    // if offset is still not init, abort memory read and set state as ASR not ready
+    let player_state_offset = match addreses.player_state_offset {
+        Some(offset) => offset,
+        None => {
+            addreses.refresh_player_state_offset(game);
+            return PlayerState::ASROffsetNotReady;
+        }
+    };
+    let player_state_int = game
+        .read::<u32>(player_obj + player_state_offset as u64)
+        .unwrap_or(100);
+
     match player_state_int {
         0 => PlayerState::None,
         1 => PlayerState::Control,
@@ -400,6 +434,7 @@ fn player_state_to_string(player_state: PlayerState) -> &'static str {
         PlayerState::Shooting => "Shooting",
         PlayerState::Racing => "Racing",
         PlayerState::ASRReadError => "ASR Memory Read Error",
+        PlayerState::ASROffsetNotReady => "ASR Offset Not Ready",
         PlayerState::Unknown => "UNKNOWN",
     }
 }

@@ -410,6 +410,7 @@ enum PlayerState {
     Shooting,
     Racing,
     ASRReadError,
+    ASROffsetNotReady,
     Unknown,
 }
 

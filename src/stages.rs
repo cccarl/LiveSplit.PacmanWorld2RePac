@@ -14,6 +14,8 @@ pub enum Stages {
     PacAttack = 11,
     StageSelectPast = 12,
     CreditNew = 13,
+    StageSelectSonic = 14,
+    CreditSonic = 15,
     Stage1_1 = 101,
     Stage1_2 = 102,
     Stage1_3 = 103,
@@ -51,6 +53,9 @@ pub enum Stages {
     Stage6_3Past = 605,
     Stage6_4Past = 606,
     Stage6_5 = 607,
+    StageSonic1 = 701,
+    StageSonic2 = 702,
+    StageSonic3 = 703,
     MazeStage1_2 = 1102,
     MazeStage1_3 = 1103,
     MazeStage2_1 = 1201,
@@ -78,6 +83,7 @@ pub enum Stages {
     SceneMazeStageCredit = 5001,
     FirstScene = 6001,
     Dummy = 7001,
+    ASRError = 100_000,
     #[default]
     Unknown,
 }
@@ -99,6 +105,8 @@ impl Into<Stages> for u32 {
             11 => Stages::PacAttack,
             12 => Stages::StageSelectPast,
             13 => Stages::CreditNew,
+            14 => Stages::StageSelectSonic,
+            15 => Stages::CreditSonic,
             101 => Stages::Stage1_1,
             102 => Stages::Stage1_2,
             103 => Stages::Stage1_3,
@@ -136,6 +144,9 @@ impl Into<Stages> for u32 {
             605 => Stages::Stage6_3Past,
             606 => Stages::Stage6_4Past,
             607 => Stages::Stage6_5,
+            701 => Stages::StageSonic1,
+            702 => Stages::StageSonic2,
+            703 => Stages::StageSonic3,
             1102 => Stages::MazeStage1_2,
             1103 => Stages::MazeStage1_3,
             1201 => Stages::MazeStage2_1,
@@ -163,6 +174,7 @@ impl Into<Stages> for u32 {
             5001 => Stages::SceneMazeStageCredit,
             6001 => Stages::FirstScene,
             7001 => Stages::Dummy,
+            100000 => Stages::ASRError,
             _ => Stages::Unknown,
         }
     }
@@ -185,6 +197,8 @@ impl Stages {
             Stages::PacAttack => "Pac-Attack",
             Stages::StageSelectPast => "Stage Select (Past)",
             Stages::CreditNew => "Credit New",
+            Stages::StageSelectSonic => "Stage Select (Sonic)",
+            Stages::CreditSonic => "Credits (Sonic)",
             Stages::Stage1_1 => "Stage 1-1",
             Stages::Stage1_2 => "Stage 1-2",
             Stages::Stage1_3 => "Stage 1-3",
@@ -222,6 +236,9 @@ impl Stages {
             Stages::Stage6_3Past => "Stage 6-3 (Past)",
             Stages::Stage6_4Past => "Stage 6-4 (Past)",
             Stages::Stage6_5 => "Stage 6-5",
+            Stages::StageSonic1 => "Sonic Act 1",
+            Stages::StageSonic2 => "Sonic Act 2",
+            Stages::StageSonic3 => "Sonic Act 3",
             Stages::MazeStage1_2 => "Maze 1-2",
             Stages::MazeStage1_3 => "Maze 1-3",
             Stages::MazeStage2_1 => "Maze 2-1",
@@ -249,7 +266,8 @@ impl Stages {
             Stages::SceneMazeStageCredit => "Scene Maze Stage Credit",
             Stages::FirstScene => "First Scene",
             Stages::Dummy => "Dummy",
-            Stages::Unknown => "Unknown (ASR Error)",
+            Stages::ASRError => "ASR Error",
+            Stages::Unknown => "Unknown",
         }
     }
 }
