@@ -12,7 +12,7 @@ use asr::{
     Process,
 };
 use memory::{update_watchers, Memory};
-use stages::Stages;
+use stages::Stage;
 
 asr::async_main!(stable);
 asr::panic_handler!();
@@ -99,7 +99,7 @@ async fn main() {
                             // * restart from menu while player is not dead and checkpoint is -1 (works on stage start before checkpoints)
                             // * checkpoint returns to -1 while stage state is "pac dead"
                             // * start from level select
-                            // TODO fix submatine levels
+                            // TODO fix submarine levels
                             if (stage_state_pair.old == StageState::Pause
                                 && stage_state_pair.current == StageState::PacDead
                                 && player_state_pair.current != PlayerState::Dead
@@ -121,10 +121,10 @@ async fn main() {
                                 && enable_il_restart
                                 && settings.start_il
                             {
-                                asr::timer::reset();
-                                asr::timer::start();
-                                asr::timer::resume_game_time();
-                                asr::timer::set_game_time(Duration::seconds(0));
+                                timer::reset();
+                                timer::start();
+                                timer::resume_game_time();
+                                timer::set_game_time(Duration::seconds(0));
                                 enable_il_restart = false;
                                 highest_boss_phase_split = 0;
                             }
@@ -135,10 +135,10 @@ async fn main() {
                             {
                                 // JANK SOLUTION to finish the run even when there are splits pending from skipping checkpoints
                                 for _ in 0..100 {
-                                    asr::timer::skip_split();
+                                    timer::skip_split();
                                 }
                                 // end run :)
-                                asr::timer::split();
+                                timer::split();
                             }
 
                             if split_checkpoints(&checkpoint_pair, &settings)
@@ -148,7 +148,7 @@ async fn main() {
                                     &mut highest_boss_phase_split,
                                 )
                             {
-                                asr::timer::split();
+                                timer::split();
                             }
                         }
                         TimerMode::TimeTrial => {
@@ -180,7 +180,7 @@ async fn main() {
                             {
                                 // JANK SOLUTION to finish the run even when there are splits pending from skipping checkpoints
                                 for _ in 0..100 {
-                                    asr::timer::skip_split();
+                                    timer::skip_split();
                                 }
                                 timer::split();
                             }
@@ -191,9 +191,9 @@ async fn main() {
                                     && settings.time_trial_discount_bonus
                                     && last_time_trial_split_time > igt_with_bonus
                                 {
-                                    asr::timer::skip_split();
+                                    timer::skip_split();
                                 } else {
-                                    asr::timer::split();
+                                    timer::split();
                                     last_time_trial_split_time = igt_with_bonus;
                                 }
                             }
@@ -203,15 +203,14 @@ async fn main() {
                                 &settings,
                                 &mut highest_boss_phase_split,
                             ) {
-                                asr::timer::split();
+                                timer::split();
                             }
 
                             // reset on trial set to None or return to stage select
                             if (time_trial_state_pair.current == TimeTrialState::None
                                 && time_trial_igt_pair.current != time_trial_igt_pair.old)
                                 || (stage_pair.current != stage_pair.old
-                                    && (stage_pair.current == Stages::StageSelect
-                                        || stage_pair.current == Stages::StageSelectPast))
+                                    && level_is_stage_select(stage_pair.current))
                             {
                                 timer::reset();
                             }
@@ -435,7 +434,7 @@ enum StageState {
 struct Watchers {
     is_loading: Watcher<bool>,
     load_ui_progress: Watcher<f32>,
-    level_id: Watcher<Stages>,
+    level_id: Watcher<Stage>,
     checkpoint: Watcher<i32>,
     time_trial_igt: Watcher<f64>,
     time_trial_state: Watcher<TimeTrialState>,
@@ -457,9 +456,7 @@ fn start(watchers: &Watchers, settings: &Settings) -> bool {
         return false;
     }
 
-    level_pair.current == Stages::Movie
-        && level_pair.old == Stages::Title
-        && settings.start_new_game
+    level_pair.current == Stage::Movie && level_pair.old == Stage::Title && settings.start_new_game
 }
 
 fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled: bool) -> bool {
@@ -468,8 +465,9 @@ fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled
 
     if level_pair.current != level_pair.old && level_split_enabled {
         match level_pair.current {
-            Stages::StageSelect => return settings.split_on_level_complete,
-            Stages::StageSelectPast => return settings.split_on_past_level_complete,
+            Stage::StageSelect => return settings.split_on_level_complete,
+            Stage::StageSelectPast => return settings.split_on_past_level_complete,
+            Stage::StageSelectSonic => return settings.split_on_level_complete,
             _ => return false,
         }
     };
@@ -484,7 +482,7 @@ fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled
     let boss_state_pair = watchers.boss_state.pair.unwrap_or_default();
     return boss_state_pair.changed()
         && boss_state_pair.current == 4
-        && level_pair.current == Stages::Stage6_5
+        && level_pair.current == Stage::Stage6_5
         && settings.split_tocman;
 }
 
@@ -494,9 +492,9 @@ fn enable_full_game_level_splits(watchers: &Watchers) -> bool {
 
     return (player_state_pair.current == PlayerState::Goal
         && player_state_pair.current != player_state_pair.old)
-        || ((stage_pair.current == Stages::StageSelect
-            || stage_pair.current == Stages::StageSelectPast)
-            && stage_pair.old == Stages::PacVillage);
+        || ((stage_pair.current == Stage::StageSelect
+            || stage_pair.current == Stage::StageSelectPast)
+            && stage_pair.old == Stage::PacVillage);
 }
 
 fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) -> bool {
@@ -512,7 +510,7 @@ fn split_checkpoints(checkpoints_pair: &Pair<i32>, settings: &Settings) -> bool 
 
     // skip how many checkpoints were skipped
     for _ in start_skip..(split_goal - 1) {
-        asr::timer::skip_split();
+        timer::skip_split();
     }
     true
 }
@@ -534,4 +532,10 @@ fn split_boss_phase(
         return true;
     }
     false
+}
+
+fn level_is_stage_select(stage: Stage) -> bool {
+    stage == Stage::StageSelect
+        || stage == Stage::StageSelectPast
+        || stage == Stage::StageSelectSonic
 }

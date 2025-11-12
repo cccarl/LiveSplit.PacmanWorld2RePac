@@ -1,5 +1,5 @@
 use crate::{
-    stages::Stages, PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers,
+    stages::Stage, PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers,
 };
 use asr::{
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
@@ -167,7 +167,7 @@ pub fn update_watchers(
 
     match settings.timer_mode.current {
         TimerMode::IL => {
-            if level_id != Stages::StageSelect && level_id != Stages::StageSelectPast {
+            if level_id != Stage::StageSelect && level_id != Stage::StageSelectPast {
                 let stage_manager_state_int = addresses
                     .stage_manager_state
                     .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
@@ -205,7 +205,7 @@ pub fn update_watchers(
                 asr::timer::set_variable_float("UI Load Anim Progress", load_progress_pc);
             }
 
-            if level_id == Stages::Stage6_4 {
+            if level_id == Stage::Stage6_4 {
                 let spooky_qte_success = addresses
                     .spooky_qte_success
                     .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
@@ -222,7 +222,7 @@ pub fn update_watchers(
                 );
             }
 
-            if level_id == Stages::Stage6_5 && settings.split_tocman {
+            if level_id == Stage::Stage6_5 && settings.split_tocman {
                 let boss_state = get_boss_state(&game, &addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
                 asr::timer::set_variable_int("Boss State", boss_state);
@@ -272,7 +272,7 @@ pub fn update_watchers(
             time_trial_state_print_var(time_trial_state);
         }
         TimerMode::TimeTrialMarathon => {
-            if level_id != Stages::StageSelect && level_id != Stages::StageSelectPast {
+            if level_id != Stage::StageSelect && level_id != Stage::StageSelectPast {
                 let stage_manager_state_int = addresses
                     .stage_manager_state
                     .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
@@ -473,23 +473,23 @@ fn stage_state_to_string(state: StageState) -> &'static str {
     }
 }
 
-fn get_boss_state(game: &Process, addresses: &Memory, level_id: &Stages) -> u32 {
+fn get_boss_state(game: &Process, addresses: &Memory, level_id: &Stage) -> u32 {
     let mut boss_state = 0;
 
-    if *level_id == Stages::Stage1_4
-        || *level_id == Stages::Stage2_4
-        || *level_id == Stages::Stage3_4
-        || *level_id == Stages::Stage4_4
-        || *level_id == Stages::Stage5_4
-        || *level_id == Stages::Stage6_4
-        || *level_id == Stages::Stage6_5
-        || *level_id == Stages::Stage1_4Past
-        || *level_id == Stages::Stage2_4Past
-        || *level_id == Stages::Stage3_4Past
-        || *level_id == Stages::Stage4_4Past
-        || *level_id == Stages::Stage5_4Past
-        || *level_id == Stages::Stage6_4Past
-        || *level_id == Stages::Stage6_5
+    if *level_id == Stage::Stage1_4
+        || *level_id == Stage::Stage2_4
+        || *level_id == Stage::Stage3_4
+        || *level_id == Stage::Stage4_4
+        || *level_id == Stage::Stage5_4
+        || *level_id == Stage::Stage6_4
+        || *level_id == Stage::Stage6_5
+        || *level_id == Stage::Stage1_4Past
+        || *level_id == Stage::Stage2_4Past
+        || *level_id == Stage::Stage3_4Past
+        || *level_id == Stage::Stage4_4Past
+        || *level_id == Stage::Stage5_4Past
+        || *level_id == Stage::Stage6_4Past
+        || *level_id == Stage::Stage6_5
     {
         boss_state = addresses
             .boss_state
