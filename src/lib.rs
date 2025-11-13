@@ -217,6 +217,7 @@ async fn main() {
                         }
                         TimerMode::TimeTrialMarathon => {
                             timer::pause_game_time();
+                            let stage_pair = watchers.level_id.pair.unwrap_or_default();
                             let stage_state_pair = watchers.stage_state.pair.unwrap_or_default();
 
                             if time_trial_state_pair.current != time_trial_state_pair.old
@@ -266,8 +267,12 @@ async fn main() {
                                 ));
                             }
 
-                            if time_trial_state_pair.current != time_trial_state_pair.old
-                                && time_trial_state_pair.current == TimeTrialState::End
+                            // split on time trial ended normally or movie level plays with the tt state on pause (happens on spooky)
+                            if (time_trial_state_pair.current != time_trial_state_pair.old
+                                && time_trial_state_pair.current == TimeTrialState::End)
+                                || (stage_pair.old == GameStage::Stage6_4
+                                    && stage_pair.current == GameStage::Movie
+                                    && time_trial_state_pair.current == TimeTrialState::Pause)
                             {
                                 timer::split();
                             }
