@@ -13,6 +13,7 @@ pub struct Memory {
     // is_loading is not fully accurate, there is an animation at the loading screen that depends on the frame rate and is_loading is set to false during that
     // the solution found was using the an UI param to complement is_loading
     loadscreen_ui_pointer: UnityPointer<2>,
+    load_progress_gui_offset: Option<u32>,
     level_id: UnityPointer<2>,
     checkpoint: UnityPointer<2>,
     time_trial_igt: UnityPointer<2>,
@@ -54,6 +55,14 @@ impl Memory {
         let players_array = UnityPointer::new("PlayerManager", 2, &["s_sInstance", "m_players"]);
         let stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
 
+        // init the gui loading progress in the LoadingUIBase class
+        let loading_ui_class_opt = game_assembly.get_class(game, &il2cpp_module, "LoadingUIBase");
+        let load_progress_gui_offset = if let Some(load_ui_class) = loading_ui_class_opt {
+            load_ui_class.get_field_offset(game, &il2cpp_module, "m_fProgPrev")
+        } else {
+            None
+        };
+
         // init the player state offset in the PlayerPacman class
         let pacman_class_opt = game_assembly.get_class(game, &il2cpp_module, "PlayerPacman");
         let player_state_offset = if let Some(player_class) = pacman_class_opt {
@@ -76,6 +85,7 @@ impl Memory {
             game_assembly,
             is_loading,
             loadscreen_ui_pointer,
+            load_progress_gui_offset,
             checkpoint,
             level_id,
             time_trial_igt,
@@ -93,6 +103,18 @@ impl Memory {
     pub fn refresh_pointers(&mut self) {
         self.boss_state = UnityPointer::new("BossBase", 1, &["s_sInstance", "m_state"]);
         self.stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
+    }
+
+    pub fn refresh_gui_load_prog_offset(&mut self, game: &Process) {
+        let loading_ui_class_opt =
+            self.game_assembly
+                .get_class(game, &self.il2cpp_module, "LoadingUIBase");
+        if let Some(gui) = loading_ui_class_opt {
+            let offset_opt = gui.get_field_offset(game, &self.il2cpp_module, "m_fProgPrev");
+            self.load_progress_gui_offset = offset_opt;
+        } else {
+            self.load_progress_gui_offset = None;
+        };
     }
 
     pub fn refresh_player_state_offset(&mut self, game: &Process) {
@@ -156,13 +178,13 @@ pub fn update_watchers(
         asr::timer::set_variable("Player State", player_state_to_string(player_state));
     }
 
+    asr::timer::set_variable("LevelEnum", level_id.to_string());
+    asr::timer::set_variable_int("Checkpoint", checkpoint);
     if is_loading {
         asr::timer::set_variable("Loading", "True");
     } else {
         asr::timer::set_variable("Loading", "False");
     }
-    asr::timer::set_variable("LevelEnum", level_id.to_string());
-    asr::timer::set_variable_int("Checkpoint", checkpoint);
 
     match settings.timer_mode.current {
         TimerMode::IL => {
@@ -194,14 +216,20 @@ pub fn update_watchers(
                 &addresses.game_assembly,
             );
             if let Ok(ui_add) = loading_ui_add_res {
-                //asr::timer::set_variable_int("m_sLoadingUI", ui_add);
 
-                // 0x4C: m_fProgPrev
-                let load_progress_pc = game.read::<f32>(ui_add + 0x4C).unwrap_or_default();
-                watchers
-                    .load_ui_progress
-                    .update_infallible(load_progress_pc);
-                asr::timer::set_variable_float("UI Load Anim Progress", load_progress_pc);
+                match addresses.load_progress_gui_offset {
+                    Some(offset) => {
+                        // m_fProgPrev
+                        let load_progress_pc = game.read::<f32>(ui_add + offset as u64).unwrap_or_default();
+                        watchers
+                            .load_ui_progress
+                            .update_infallible(load_progress_pc);
+                        asr::timer::set_variable_float("UI Load Anim Progress", load_progress_pc);
+                    }
+                    None => {
+                        addresses.refresh_gui_load_prog_offset(game);
+                    }
+                };
             }
 
             if level_id == GameStage::Stage6_4 {
