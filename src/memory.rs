@@ -521,6 +521,7 @@ fn get_boss_state(game: &Process, addresses: &Memory, level_id: &GameStage) -> u
         || *level_id == GameStage::Stage5_4Past
         || *level_id == GameStage::Stage6_4Past
         || *level_id == GameStage::Stage6_5
+        || *level_id == GameStage::StageSonic3
     {
         boss_state = addresses
             .boss_state
