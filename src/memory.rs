@@ -343,6 +343,10 @@ pub fn update_watchers(
                 .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
                 .unwrap_or_default();
 
+            let boss_state = get_boss_state(game, addresses, &level_id);
+                watchers.boss_state.update_infallible(boss_state);
+                asr::timer::set_variable_int("Boss State", boss_state);
+
             let time_trial_state = time_trial_state_int_to_enum(time_trial_state_raw);
             watchers
                 .time_trial_state

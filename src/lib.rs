@@ -219,6 +219,7 @@ async fn main() {
                             timer::pause_game_time();
                             let stage_pair = watchers.level_id.pair.unwrap_or_default();
                             let stage_state_pair = watchers.stage_state.pair.unwrap_or_default();
+                            let boss_state = watchers.boss_state.pair.unwrap_or_default();
 
                             if time_trial_state_pair.current != time_trial_state_pair.old
                                 && time_trial_state_pair.current == TimeTrialState::TA
@@ -237,10 +238,19 @@ async fn main() {
                             let current_igt_with_bonus = time_trial_igt_pair.current
                                 - (time_trial_bonus_pair.current as f64);
 
+                            // split + accum time on time trial ended normally or state 4 (dead) on certain bosses
+                            let boss_special_case = stage_pair.current == GameStage::Stage6_4
+                                || stage_pair.current == GameStage::Stage6_4Past
+                                || stage_pair.current == GameStage::Stage6_5
+                                || stage_pair.current == GameStage::StageSonic3;
+                            let level_ended = (time_trial_state_pair.changed()
+                                && time_trial_state_pair.current == TimeTrialState::End)
+                                || (boss_special_case
+                                    && boss_state.changed()
+                                    && boss_state.current == 4);
+
                             // accum igt from previous levels/runs
-                            if time_trial_state_pair.current != time_trial_state_pair.old
-                                && time_trial_state_pair.current == TimeTrialState::End
-                            {
+                            if level_ended {
                                 // backup the timer after finishing a level0
                                 time_trial_marathon_timer_acum += current_igt_with_bonus;
                             }
@@ -256,6 +266,8 @@ async fn main() {
                             // set the igt
                             if (time_trial_state_pair.current == TimeTrialState::TA
                                 || time_trial_state_pair.current == TimeTrialState::Pause)
+                                && (!boss_special_case
+                                    || (boss_special_case && boss_state.current != 4))
                                 && !restarting_level
                             {
                                 timer::set_game_time(Duration::seconds_f64(
@@ -267,13 +279,7 @@ async fn main() {
                                 ));
                             }
 
-                            // split on time trial ended normally or movie level plays with the tt state on pause (happens on spooky)
-                            if (time_trial_state_pair.current != time_trial_state_pair.old
-                                && time_trial_state_pair.current == TimeTrialState::End)
-                                || (stage_pair.old == GameStage::Stage6_4
-                                    && stage_pair.current == GameStage::Movie
-                                    && time_trial_state_pair.current == TimeTrialState::Pause)
-                            {
+                            if level_ended {
                                 timer::split();
                             }
 
@@ -378,7 +384,7 @@ struct Settings {
     time_trial_skip_negative: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum TimeTrialState {
     None,
     ReadyInit,
