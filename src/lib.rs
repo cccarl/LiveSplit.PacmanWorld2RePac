@@ -264,11 +264,10 @@ async fn main() {
                             }
 
                             // set the igt
-                            if (time_trial_state_pair.current == TimeTrialState::TA
-                                || time_trial_state_pair.current == TimeTrialState::Pause)
-                                && (!boss_special_case
-                                    || (boss_special_case && boss_state.current != 4))
-                                && !restarting_level
+                            if !(restarting_level
+                                || time_trial_state_pair.current != TimeTrialState::TA
+                                    && time_trial_state_pair.current != TimeTrialState::Pause
+                                || boss_special_case && boss_state.current == 4)
                             {
                                 timer::set_game_time(Duration::seconds_f64(
                                     time_trial_marathon_timer_acum + current_igt_with_bonus,
@@ -396,7 +395,7 @@ enum TimeTrialState {
     Unknown,
 }
 
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum PlayerState {
     #[default]
     None,
@@ -424,7 +423,7 @@ enum PlayerState {
     Unknown,
 }
 
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum StageState {
     #[default]
     None,
@@ -551,4 +550,21 @@ fn level_is_stage_select(stage: GameStage) -> bool {
     stage == GameStage::StageSelect
         || stage == GameStage::StageSelectPast
         || stage == GameStage::StageSelectSonic
+}
+
+fn level_is_boss_stage(stage: GameStage) -> bool {
+    stage == GameStage::Stage1_4
+        || stage == GameStage::Stage2_4
+        || stage == GameStage::Stage3_4
+        || stage == GameStage::Stage4_4
+        || stage == GameStage::Stage5_4
+        || stage == GameStage::Stage6_4
+        || stage == GameStage::Stage6_5
+        || stage == GameStage::Stage1_4Past
+        || stage == GameStage::Stage2_4Past
+        || stage == GameStage::Stage3_4Past
+        || stage == GameStage::Stage4_4Past
+        || stage == GameStage::Stage5_4Past
+        || stage == GameStage::Stage6_4Past
+        || stage == GameStage::StageSonic3
 }

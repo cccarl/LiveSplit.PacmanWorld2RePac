@@ -1,9 +1,10 @@
 use crate::{
-    stages::GameStage, PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers,
+    level_is_boss_stage, level_is_stage_select, stages::GameStage, PlayerState, Settings,
+    StageState, TimeTrialState, TimerMode, Watchers,
 };
 use asr::{
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
-    Process,
+    print_message, Process,
 };
 
 pub struct Memory {
@@ -100,9 +101,14 @@ impl Memory {
         })
     }
 
-    pub fn refresh_pointers(&mut self) {
+    // UnityPointer::new is very slow! avoid using at the same time as other values may change, like loading
+    pub fn refresh_boss_state_pointer_path(&mut self) {
         self.boss_state = UnityPointer::new("BossBase", 1, &["s_sInstance", "m_state"]);
+        print_message("Boss state pointer path refreshed");
+    }
+    pub fn refresh_stage_manager_pointer_path(&mut self) {
         self.stage_manager_state = UnityPointer::new("StageManager", 2, &["s_sInstance", "m_step"]);
+        print_message("Stage manager pointer path refreshed");
     }
 
     pub fn refresh_gui_load_prog_offset(&mut self, game: &Process) {
@@ -149,17 +155,17 @@ pub fn update_watchers(
         .into();
     watchers.level_id.update_infallible(level_id);
 
-    // refresh pointer paths on level change
-    let curr_level_pair = watchers.level_id.pair.unwrap_or_default();
-    if curr_level_pair.current != curr_level_pair.old {
-        addresses.refresh_pointers();
-    }
-
     let is_loading = addresses
         .is_loading
         .deref::<bool>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
     watchers.is_loading.update_infallible(is_loading);
+
+    // refresh stage manager path on level change, but not on level select to avoid lagging the load detection
+    let curr_level_pair = watchers.level_id.pair.unwrap_or_default();
+    if curr_level_pair.changed() && !level_is_stage_select(curr_level_pair.current) {
+        addresses.refresh_stage_manager_pointer_path();
+    }
 
     let checkpoint = addresses
         .checkpoint
@@ -186,22 +192,30 @@ pub fn update_watchers(
         asr::timer::set_variable("Loading", "False");
     }
 
+    if !level_is_stage_select(level_id) {
+        let stage_manager_state_int = addresses
+            .stage_manager_state
+            .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+            .unwrap_or_default();
+        let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
+        watchers.stage_state.update_infallible(stage_manager_state);
+
+        asr::timer::set_variable(
+            "Stage Manager State",
+            stage_state_to_string(stage_manager_state),
+        );
+
+        // only refresh the boss state when stage manager is on the initial fade end state, aka start of the level
+        if watchers.stage_state.pair.unwrap_or_default().changed()
+            && watchers.stage_state.pair.unwrap_or_default().current == StageState::InitEndFade
+            && level_is_boss_stage(curr_level_pair.current)
+        {
+            addresses.refresh_boss_state_pointer_path();
+        }
+    }
+
     match settings.timer_mode.current {
         TimerMode::IL => {
-            if level_id != GameStage::StageSelect && level_id != GameStage::StageSelectPast {
-                let stage_manager_state_int = addresses
-                    .stage_manager_state
-                    .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                    .unwrap_or_default();
-                let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
-                watchers.stage_state.update_infallible(stage_manager_state);
-
-                asr::timer::set_variable(
-                    "Stage Manager State",
-                    stage_state_to_string(stage_manager_state),
-                );
-            }
-
             if settings.split_boss_phase {
                 let boss_state = get_boss_state(game, addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
@@ -216,11 +230,11 @@ pub fn update_watchers(
                 &addresses.game_assembly,
             );
             if let Ok(ui_add) = loading_ui_add_res {
-
                 match addresses.load_progress_gui_offset {
                     Some(offset) => {
                         // m_fProgPrev
-                        let load_progress_pc = game.read::<f32>(ui_add + offset as u64).unwrap_or_default();
+                        let load_progress_pc =
+                            game.read::<f32>(ui_add + offset as u64).unwrap_or_default();
                         watchers
                             .load_ui_progress
                             .update_infallible(load_progress_pc);
@@ -299,20 +313,6 @@ pub fn update_watchers(
             time_trial_state_print_var(time_trial_state);
         }
         TimerMode::TimeTrialMarathon => {
-            if level_id != GameStage::StageSelect && level_id != GameStage::StageSelectPast {
-                let stage_manager_state_int = addresses
-                    .stage_manager_state
-                    .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-                    .unwrap_or_default();
-                let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
-                watchers.stage_state.update_infallible(stage_manager_state);
-
-                asr::timer::set_variable(
-                    "Stage Manager State",
-                    stage_state_to_string(stage_manager_state),
-                );
-            }
-
             let bonus_list_address_res = addresses.time_trial_bonus_list_pointer.deref::<u64>(
                 game,
                 &addresses.il2cpp_module,
@@ -344,8 +344,8 @@ pub fn update_watchers(
                 .unwrap_or_default();
 
             let boss_state = get_boss_state(game, addresses, &level_id);
-                watchers.boss_state.update_infallible(boss_state);
-                asr::timer::set_variable_int("Boss State", boss_state);
+            watchers.boss_state.update_infallible(boss_state);
+            asr::timer::set_variable_int("Boss State", boss_state);
 
             let time_trial_state = time_trial_state_int_to_enum(time_trial_state_raw);
             watchers
