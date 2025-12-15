@@ -4,8 +4,11 @@ use crate::{
 };
 use asr::{
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
-    print_message, Process,
+    print_message,
+    timer::set_variable_float,
+    Process,
 };
+use libm::sqrtf;
 
 pub struct Memory {
     il2cpp_module: Module,
@@ -26,6 +29,7 @@ pub struct Memory {
     boss_state: UnityPointer<3>,
     players_array: UnityPointer<3>,
     player_state_offset: Option<u32>,
+    speed_vec_offset: Option<u32>,
     stage_manager_state: UnityPointer<3>,
     // WIP
     /* title_scene_step: UnityPointer<3>, */
@@ -72,6 +76,12 @@ impl Memory {
             None
         };
 
+        let speed_vec_offset = if let Some(player_class) = pacman_class_opt {
+            player_class.get_field_offset(game, &il2cpp_module, "m_moveVec")
+        } else {
+            None
+        };
+
         // TODO cope for a better autostart
         // GameLevelSelect seems to be the UI to pick difficulty but theres no reference to it on a field...
         // reding "private GameLevelSelect.EStep m_step;" would be as perfect of a start as it could be
@@ -96,6 +106,7 @@ impl Memory {
             boss_state,
             players_array,
             player_state_offset,
+            speed_vec_offset,
             stage_manager_state,
             /* title_scene_step, */
         })
@@ -132,6 +143,18 @@ impl Memory {
             self.player_state_offset = offset_opt;
         } else {
             self.player_state_offset = None;
+        };
+    }
+
+    pub fn refresh_speed_vec_offset(&mut self, game: &Process) {
+        let pacman_class_opt =
+            self.game_assembly
+                .get_class(game, &self.il2cpp_module, "PlayerPacman");
+        if let Some(pac) = pacman_class_opt {
+            let offset_opt = pac.get_field_offset(game, &self.il2cpp_module, "m_moveVec");
+            self.speed_vec_offset = offset_opt;
+        } else {
+            self.speed_vec_offset = None;
         };
     }
 }
@@ -415,6 +438,30 @@ fn get_player1_state(game: &Process, players_pointer: u64, addreses: &mut Memory
     let player_state_int = game
         .read::<u32>(player_obj + player_state_offset as u64)
         .unwrap_or(100);
+
+    match addreses.speed_vec_offset {
+        Some(offset) => {
+            let player_pos_x = game
+                .read::<f32>(player_obj + offset as u64)
+                .unwrap_or(-100.);
+            let player_pos_y = game
+                .read::<f32>(player_obj + offset as u64 + 0x8)
+                .unwrap_or(-100.);
+            set_variable_float("X", player_pos_x);
+            set_variable_float("Y", player_pos_y);
+            set_variable_float(
+                "Speed2d",
+                round_no_std_f64(
+                    sqrtf(player_pos_x * player_pos_x + player_pos_y * player_pos_y) as f64,
+                    3,
+                ),
+            );
+        }
+        None => {
+            addreses.refresh_speed_vec_offset(game);
+            return PlayerState::ASROffsetNotReady;
+        }
+    };
 
     match player_state_int {
         0 => PlayerState::None,
