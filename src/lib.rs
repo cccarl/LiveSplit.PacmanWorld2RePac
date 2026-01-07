@@ -119,14 +119,19 @@ async fn main() {
                                 || player_state_pair.old != PlayerState::Shooting
                                     && player_state_pair.current == PlayerState::Shooting)
                                 && enable_il_restart
-                                && settings.start_il
                             {
-                                timer::reset();
-                                timer::start();
-                                timer::resume_game_time();
-                                timer::set_game_time(Duration::seconds(0));
+                                if settings.reset_on_level_start {
+                                    timer::reset();
+                                    timer::resume_game_time();
+                                }
+                                if settings.start_il {
+                                    if timer::state() != TimerState::Running {
+                                        timer::start();
+                                        timer::set_game_time(Duration::seconds(0));
+                                    }
+                                    highest_boss_phase_split = 0;
+                                }
                                 enable_il_restart = false;
-                                highest_boss_phase_split = 0;
                             }
 
                             if player_state_pair.current != player_state_pair.old
@@ -368,6 +373,10 @@ struct Settings {
     /// New File
     #[default = true]
     reset_on_file_creation: bool,
+
+    /// Individual Level Start
+    #[default = true]
+    reset_on_level_start: bool,
 
     /// Misc
     _misc_title: Title,
