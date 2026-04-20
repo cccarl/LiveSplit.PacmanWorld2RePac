@@ -101,15 +101,6 @@ async fn main() {
                             }
                         },
                         TimerMode::ILSeries => {
-                            if is_loading_pair.current
-                                || (load_ui_progress_pair.current > 0.0
-                                    && load_ui_progress_pair.current < 1.0)
-                            {
-                                timer::pause_game_time();
-                            } else {
-                                timer::resume_game_time();
-                            }
-                            
                             if enable_reset_il(&watchers) {
                                 enable_il_restart = true;
                             }
@@ -117,10 +108,10 @@ async fn main() {
                             // Only reset on level start if the player hasn't completed a level yet in this run.
                             if player_gained_control(&watchers) && enable_il_restart
                             {
+                                timer::resume_game_time();
                                 if !il_series_first_goal_clear {
                                     if settings.reset_on_level_start {
                                         timer::reset();
-                                        timer::resume_game_time();
                                     }
                                     if settings.start_il {
                                         if timer::state() != TimerState::Running {
@@ -143,6 +134,7 @@ async fn main() {
                             if split_on_level_end || split_final_boss(&watchers, &settings)
                             {
                                 timer::split();
+                                timer::pause_game_time();
                             }
                         }
                         TimerMode::IL => {
