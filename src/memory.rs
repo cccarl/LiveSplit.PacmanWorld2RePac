@@ -3,8 +3,8 @@ use crate::{
     StageState, TimeTrialState, TimerMode, Watchers,
 };
 use asr::{
-    game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
-    print_message, Process,
+    game_engine::unity::il2cpp::{Class, Image, Module, UnityPointer, Version},
+    print_message, Address, Process,
 };
 
 pub struct Memory {
@@ -27,8 +27,29 @@ pub struct Memory {
     players_array: UnityPointer<3>,
     player_state_offset: Option<u32>,
     stage_manager_state: UnityPointer<3>,
+    ui_select_instance: UnityPointer<3>,
     // WIP
     /* title_scene_step: UnityPointer<3>, */
+}
+
+#[derive(Class)]
+pub struct TitleSelectUI {
+    #[rename = "scInitIdx"]
+    #[static_field]
+    pub _sc_init_idx: i32,
+    #[rename = "m_selectUIList"]
+    pub _m_select_ui_list: u64,
+    #[rename = "m_instantiateRoot"]
+    pub _m_instantiate_root: u64,
+    #[rename = "m_languagePrefab"]
+    pub _m_language_prefab: u64,
+    #[rename = "m_saveLoadPrefab"]
+    pub _m_save_load_prefab: u64,
+    #[rename = "m_optionPrefab"]
+    pub _m_option_prefab: u64,
+    #[rename = "m_gameLevelPrefab"]
+    pub _m_game_level_prefab: u64,
+    pub m_step: i32,
 }
 
 impl Memory {
@@ -64,13 +85,30 @@ impl Memory {
             None
         };
 
-        // init the player state offset in the PlayerPacman class
+        // get address of TitleSelectUI
         let pacman_class_opt = game_assembly.get_class(game, &il2cpp_module, "PlayerPacman");
         let player_state_offset = if let Some(player_class) = pacman_class_opt {
             player_class.get_field_offset(game, &il2cpp_module, "m_step")
         } else {
             None
         };
+
+        // ui select class to detect start of the run
+        let ui_select_instance =
+            UnityPointer::new("TitleScene", 2, &["s_sInstance", "m_titleUIRoot"]);
+
+        // OLD TESTS
+        let test = stage_manager_state
+            .deref::<u64>(game, &il2cpp_module, &game_assembly)
+            .unwrap_or(1);
+        asr::timer::set_variable_int("AAAAAAAAAAAA", test);
+
+        let save_data_man: UnityPointer<3> =
+            UnityPointer::new("SaveDataManager", 1, &["s_sInstance", "m_implement"]);
+        let save_data_add = save_data_man
+            .deref::<u64>(game, &il2cpp_module, &game_assembly)
+            .unwrap_or(1);
+        asr::timer::set_variable_int("SAVE DATA (m_implement)", save_data_add);
 
         // TODO cope for a better autostart
         // GameLevelSelect seems to be the UI to pick difficulty but theres no reference to it on a field...
@@ -97,6 +135,7 @@ impl Memory {
             players_array,
             player_state_offset,
             stage_manager_state,
+            ui_select_instance,
             /* title_scene_step, */
         })
     }
@@ -136,7 +175,7 @@ impl Memory {
     }
 }
 
-pub fn update_watchers(
+pub async fn update_watchers(
     game: &Process,
     addresses: &mut Memory,
     watchers: &mut Watchers,
@@ -147,6 +186,29 @@ pub fn update_watchers(
         .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or_default();
     asr::timer::set_variable_int("TITLE STEP", title_scene_step); */
+
+    // Dereference the pointer chain to get the instance address
+    let select_ui_addr = addresses
+        .ui_select_instance
+        .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
+        .unwrap_or(0);
+
+    // read the class fields using the binding
+    asr::timer::set_variable_int("m_titleUIRoot", select_ui_addr);
+    // TODO don't hardcode the 0x28, get it on struct init like player state offset
+    if let Ok(title_ui_root) = game.read::<u64>(select_ui_addr + 0x28) {
+        let title_select_class =
+            TitleSelectUI::bind(game, &addresses.il2cpp_module, &addresses.game_assembly).await;
+        asr::timer::set_variable_int("m_selectUI", title_ui_root);
+        if let Ok(class_instance) = title_select_class.read(&game, Address::from(title_ui_root)) {
+            asr::timer::set_variable_int("m_step2 (class)", class_instance.m_step);
+            watchers
+                .main_menu_select_ui
+                .update_infallible(class_instance.m_step);
+        }
+    } else {
+        watchers.main_menu_select_ui.update_infallible(0);
+    }
 
     let level_id = addresses
         .level_id

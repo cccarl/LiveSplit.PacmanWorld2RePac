@@ -47,7 +47,7 @@ async fn main() {
                 loop {
                     // MAIN LOOP
                     settings.update();
-                    update_watchers(&process, &mut memory, &mut watchers, &settings);
+                    update_watchers(&process, &mut memory, &mut watchers, &settings).await;
 
                     // get memory values
                     let is_loading_pair = watchers.is_loading.pair.unwrap_or_default();
@@ -62,9 +62,10 @@ async fn main() {
                         watchers.load_ui_progress.pair.unwrap_or(Pair::default());
                     let player_state_pair = watchers.player_state.pair.unwrap_or_default();
 
-
                     // Reset goal flag
-                    if !(timer::state() == TimerState::Running || timer::state() == TimerState::Paused) {
+                    if !(timer::state() == TimerState::Running
+                        || timer::state() == TimerState::Paused)
+                    {
                         il_series_first_goal_clear = false;
                     }
 
@@ -84,9 +85,8 @@ async fn main() {
                                     timer::reset();
                                 }
                                 timer::start();
-                                // timing starts on difficulty select so we manually add the animation time before the loading starts
-                                // if i manage to detect that from memory then this will be removed
-                                timer::set_game_time(Duration::new(3, 433_333_333));
+                                // timing starts on difficulty select button press which happens ~0.33s before the menu state changes
+                                timer::set_game_time(Duration::new(0, 333_333_333));
                             }
 
                             // only do level splits if player actually completed the level
@@ -99,15 +99,14 @@ async fn main() {
                                 timer::split();
                                 enable_level_split = false;
                             }
-                        },
+                        }
                         TimerMode::ILSeries => {
                             if enable_reset_il(&watchers) {
                                 enable_il_restart = true;
                             }
 
                             // Only reset on level start if the player hasn't completed a level yet in this run.
-                            if player_gained_control(&watchers) && enable_il_restart
-                            {
+                            if player_gained_control(&watchers) && enable_il_restart {
                                 timer::resume_game_time();
                                 if !il_series_first_goal_clear {
                                     if settings.reset_on_level_start {
@@ -131,8 +130,7 @@ async fn main() {
                             }
 
                             let split_on_level_end = settings.split_il && hit_goal;
-                            if split_on_level_end || split_final_boss(&watchers, &settings)
-                            {
+                            if split_on_level_end || split_final_boss(&watchers, &settings) {
                                 timer::split();
                                 timer::pause_game_time();
                             }
@@ -144,8 +142,7 @@ async fn main() {
                                 enable_il_restart = true;
                             }
 
-                            if player_gained_control(&watchers) && enable_il_restart
-                            {
+                            if player_gained_control(&watchers) && enable_il_restart {
                                 if settings.reset_on_level_start {
                                     timer::reset();
                                     timer::resume_game_time();
@@ -160,8 +157,7 @@ async fn main() {
                                 enable_il_restart = false;
                             }
 
-                            if player_hit_goal(&watchers) && settings.split_il
-                            {
+                            if player_hit_goal(&watchers) && settings.split_il {
                                 // JANK SOLUTION to finish the run even when there are splits pending from skipping checkpoints
                                 for _ in 0..100 {
                                     timer::skip_split();
@@ -383,7 +379,7 @@ struct Settings {
     split_il: bool,
 
     /// Individual Level Boss Phase
-    /// 
+    ///
     /// Not supported for Individual Level Series
     #[default = false]
     split_boss_phase: bool,
@@ -491,22 +487,15 @@ struct Watchers {
     boss_state: Watcher<u32>,
     player_state: Watcher<PlayerState>,
     stage_state: Watcher<StageState>,
+    main_menu_select_ui: Watcher<i32>,
 }
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
-    let level_pair = if let Some(pair) = &watchers.level_id.pair {
-        pair
+    if let Some(menu_state) = watchers.main_menu_select_ui.pair {
+        return menu_state.current == 0 && menu_state.old == 4 && settings.start_new_game;
     } else {
-        return false;
-    };
-
-    if !level_pair.changed() {
-        return false;
+        false
     }
-
-    level_pair.current == GameStage::Movie
-        && level_pair.old == GameStage::Title
-        && settings.start_new_game
 }
 
 fn split_full_game(watchers: &Watchers, settings: &Settings, level_split_enabled: bool) -> bool {
