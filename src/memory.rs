@@ -1,10 +1,14 @@
 use crate::{
-    level_is_boss_stage, level_is_stage_select, stages::GameStage, PlayerState, Settings,
-    StageState, TimeTrialState, TimerMode, Watchers,
+    PlayerState, Settings, StageState, TimeTrialState, TimerMode, Watchers, level_is_boss_stage,
+    level_is_stage_select, stages::GameStage,
 };
 use asr::{
+    Error, Process,
     game_engine::unity::il2cpp::{Image, Module, UnityPointer, Version},
-    print_message, Process,
+    print_message,
+    string::ArrayCString,
+    timer::{set_variable, set_variable_float, set_variable_int},
+    watcher::Watcher,
 };
 
 pub struct Memory {
@@ -27,8 +31,11 @@ pub struct Memory {
     players_array: UnityPointer<3>,
     player_state_offset: Option<u32>,
     stage_manager_state: UnityPointer<3>,
-    // WIP
-    /* title_scene_step: UnityPointer<3>, */
+    // title scene canvas for autostart
+    ui_canvas_instance: UnityPointer<3>,
+    ui_canvas_address: Watcher<u64>,
+    ui_canvas_transform_address: Option<u64>,
+    game_level_address: Option<u64>,
 }
 
 impl Memory {
@@ -64,7 +71,7 @@ impl Memory {
             None
         };
 
-        // init the player state offset in the PlayerPacman class
+        // get address of TitleSelectUI
         let pacman_class_opt = game_assembly.get_class(game, &il2cpp_module, "PlayerPacman");
         let player_state_offset = if let Some(player_class) = pacman_class_opt {
             player_class.get_field_offset(game, &il2cpp_module, "m_step")
@@ -72,14 +79,9 @@ impl Memory {
             None
         };
 
-        // TODO cope for a better autostart
-        // GameLevelSelect seems to be the UI to pick difficulty but theres no reference to it on a field...
-        // reding "private GameLevelSelect.EStep m_step;" would be as perfect of a start as it could be
-
-        // GameUI (singleton) has "private GameObject m_goGameLevelPrefab;", does this lead to the GameLevelSelect somehow?
-
-        // 2nd best thing thats easy to use but might as well keep using the intro level video if its not frame perfect, this is like half a second off still
-        /* let title_scene_step = UnityPointer::new("TitleScene", 2, &["s_sInstance", "m_step"]); */
+        // ui canvas to detect start of run
+        let ui_canvas_instance =
+            UnityPointer::new("TitleScene", 2, &["s_sInstance", "m_sUICanvas"]);
 
         Some(Self {
             il2cpp_module,
@@ -97,7 +99,10 @@ impl Memory {
             players_array,
             player_state_offset,
             stage_manager_state,
-            /* title_scene_step, */
+            ui_canvas_instance,
+            ui_canvas_address: Watcher::new(),
+            ui_canvas_transform_address: None,
+            game_level_address: None,
         })
     }
 
@@ -134,26 +139,155 @@ impl Memory {
             self.player_state_offset = None;
         };
     }
+
+    pub fn refresh_autostart_helpers(&mut self, game: &Process, watchers: &mut Watchers) {
+        if let Err(_) = self.refresh_canvas_transform(game) {
+            self.ui_canvas_transform_address = None;
+            print_message("Failed to refresh canvas transform, set to None");
+            return;
+        }
+
+        if let Err(_) = self.refresh_game_level(game) {
+            print_message("Failed to refresh game level");
+            return;
+        }
+
+        if let Some(game_level_add) = self.game_level_address {
+            let final_step_res = game.read::<i32>(game_level_add + 0x6C);
+            if let Ok(final_step) = final_step_res {
+                let pair = watchers
+                    .main_menu_select_diff_step
+                    .update_infallible(final_step);
+
+                if pair.changed() {
+                    set_variable_int("UI step", pair.current);
+                }
+            }
+        }
+    }
+
+    fn refresh_canvas_transform(&mut self, game: &Process) -> Result<(), Error> {
+        let canvas_address =
+            self.ui_canvas_instance
+                .deref::<u64>(game, &self.il2cpp_module, &self.game_assembly)?;
+
+        let pair = self.ui_canvas_address.update_infallible(canvas_address);
+
+        if !pair.changed() && self.ui_canvas_transform_address.is_some() {
+            return Ok(());
+        }
+
+        set_variable_int("ui_canvas", canvas_address);
+
+        let p = game.read::<u64>(canvas_address + 0x10)?;
+        let p = game.read::<u64>(p + 0x20)?;
+        let p = game.read::<u64>(p + 0x20)?;
+        let p = game.read::<u64>(p + 0x8)?;
+        let p = game.read::<u64>(p + 0x18)?;
+        let p = game.read::<u64>(p + 0x0)?;
+        self.ui_canvas_transform_address = Some(p);
+        self.game_level_address = None; // now invalid, force a refresh in refresh_game_level
+        print_message("Transform address updated");
+        set_variable_int("ui_canvas_transform", p);
+        Ok(())
+    }
+
+    fn refresh_game_level(&mut self, game: &Process) -> Result<(), Error> {
+        let ui_canvas_transform_address = self.ui_canvas_transform_address;
+        let game_level_address = self.game_level_address;
+
+        if let Some(transform_address) = ui_canvas_transform_address
+            && game_level_address.is_none()
+        {
+            // 1. native Transform object pointer
+            let p = game.read::<u64>(transform_address + 0x10)?;
+
+            // 2. child count and child array pointer
+            let child_count = game.read::<u64>(p + 0x70)?;
+            let childs = game.read::<u64>(p + 0x60)?;
+
+            // 3. iterate over each child Transform
+            let child = {
+                let mut child_add = None;
+                for i in 0..child_count {
+                    let child_transform = game.read::<u64>(childs + 0x8 * i)?;
+
+                    // 4. get the GameObject from the Transform
+                    let game_object = game.read::<u64>(child_transform + 0x20)?;
+
+                    // 5. get the name string pointer from the GameObject
+                    let name_ptr = game.read::<u64>(game_object + 0x50)?;
+
+                    // 6. read the string and compare
+                    let child_name_raw_string = game.read::<ArrayCString<128>>(name_ptr)?;
+                    let child_name_utf8 = child_name_raw_string.validate_utf8();
+                    if let Ok(child_name) = child_name_utf8 {
+                        //print_message(child_name);
+                        if child_name == "Common_EasyModeSelect(Clone)" {
+                            child_add = Some(child_transform);
+                            break;
+                        }
+                    }
+                }
+                child_add
+            };
+
+            if let Some(child_add) = child {
+                // read transform game object
+                let p = game.read::<u64>(child_add + 0x20)?;
+                let p = game.read::<u64>(p + 0x18)?;
+                let game_object = game.read::<u64>(p + 0x0)?;
+
+                // get component by index (we need idx 1)
+                let idx = 1;
+                // 1. native GameObject object pointer
+                let p = game.read::<u64>(game_object + 0x10)?;
+                // 2. component count
+                let component_count = game.read::<u64>(p + 0x30)?;
+
+                if idx >= component_count {
+                    print_message("Index of component is bigger than count! Aborting.");
+                    return Ok(());
+                }
+
+                // 3. base address of the m_Component array (array of ComponentPair structs)
+                let components = game.read::<u64>(p + 0x20)?;
+
+                // 4. Each pair is 0x10 bytes, typically structured as { typeIndex(0x8), componentPtr(0x8) }
+                //    so the actual component pointer is at offset 0x8 from the pair's start address
+                let pair_addr = components + 0x8 + (0x10 * idx);
+                let component = game.read::<u64>(pair_addr)?;
+                let component = game.read::<u64>(component + 0x18)?;
+                let component = game.read::<u64>(component + 0x0)?;
+
+                self.game_level_address = Some(component);
+                set_variable_int("game_level_address", component);
+            }
+
+            return Ok(());
+        } else {
+            return Ok(());
+        }
+    }
 }
 
-pub fn update_watchers(
+pub async fn update_watchers(
     game: &Process,
     addresses: &mut Memory,
     watchers: &mut Watchers,
     settings: &Settings,
 ) {
-    /* let title_scene_step = addresses
-        .title_scene_step
-        .deref::<u64>(game, &addresses.il2cpp_module, &addresses.game_assembly)
-        .unwrap_or_default();
-    asr::timer::set_variable_int("TITLE STEP", title_scene_step); */
-
     let level_id = addresses
         .level_id
         .deref::<u32>(game, &addresses.il2cpp_module, &addresses.game_assembly)
         .unwrap_or(100_000)
         .into();
     watchers.level_id.update_infallible(level_id);
+
+    // huge chunk of reads that only help with autostarting so they only run on the title screen
+    if level_id == GameStage::Title {
+        addresses.refresh_autostart_helpers(&game, watchers);
+    }
 
     let is_loading = addresses
         .is_loading
@@ -181,15 +315,15 @@ pub fn update_watchers(
     if let Ok(players_array_pointer) = players_array_pointer_res {
         let player_state = get_player1_state(game, players_array_pointer, addresses);
         watchers.player_state.update_infallible(player_state);
-        asr::timer::set_variable("Player State", player_state_to_string(player_state));
+        set_variable("Player State", player_state_to_string(player_state));
     }
 
-    asr::timer::set_variable("LevelEnum", level_id.to_string());
-    asr::timer::set_variable_int("Checkpoint", checkpoint);
+    set_variable("LevelEnum", level_id.to_string());
+    set_variable_int("Checkpoint", checkpoint);
     if is_loading {
-        asr::timer::set_variable("Loading", "True");
+        set_variable("Loading", "True");
     } else {
-        asr::timer::set_variable("Loading", "False");
+        set_variable("Loading", "False");
     }
 
     if !level_is_stage_select(level_id) {
@@ -200,7 +334,7 @@ pub fn update_watchers(
         let stage_manager_state = get_stage_manager_state(stage_manager_state_int);
         watchers.stage_state.update_infallible(stage_manager_state);
 
-        asr::timer::set_variable(
+        set_variable(
             "Stage Manager State",
             stage_state_to_string(stage_manager_state),
         );
@@ -219,7 +353,7 @@ pub fn update_watchers(
             if settings.split_boss_phase {
                 let boss_state = get_boss_state(game, addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
-                asr::timer::set_variable_int("Boss State", boss_state);
+                set_variable_int("Boss State", boss_state);
             }
         }
         TimerMode::FullGame | TimerMode::ILSeries => {
@@ -238,7 +372,7 @@ pub fn update_watchers(
                         watchers
                             .load_ui_progress
                             .update_infallible(load_progress_pc);
-                        asr::timer::set_variable_float("UI Load Anim Progress", load_progress_pc);
+                        set_variable_float("UI Load Anim Progress", load_progress_pc);
                     }
                     None => {
                         addresses.refresh_gui_load_prog_offset(game);
@@ -254,7 +388,7 @@ pub fn update_watchers(
                 watchers
                     .spooky_qte_success
                     .update_infallible(spooky_qte_success);
-                asr::timer::set_variable(
+                set_variable(
                     "Spooky QTE Complete",
                     match spooky_qte_success {
                         true => "Yes",
@@ -266,7 +400,7 @@ pub fn update_watchers(
             if level_id == GameStage::Stage6_5 {
                 let boss_state = get_boss_state(game, addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
-                asr::timer::set_variable_int("Boss State", boss_state);
+                set_variable_int("Boss State", boss_state);
             }
         }
         TimerMode::TimeTrial => {
@@ -281,7 +415,7 @@ pub fn update_watchers(
                 watchers
                     .time_trial_bonus_time
                     .update_infallible(time_trial_bonus);
-                asr::timer::set_variable_int("Time Trial Total Bonus", time_trial_bonus);
+                set_variable_int("Time Trial Total Bonus", time_trial_bonus);
             }
 
             let time_trial_igt = addresses
@@ -306,10 +440,10 @@ pub fn update_watchers(
             if settings.split_boss_phase {
                 let boss_state = get_boss_state(game, addresses, &level_id);
                 watchers.boss_state.update_infallible(boss_state);
-                asr::timer::set_variable_int("Boss State", boss_state);
+                set_variable_int("Boss State", boss_state);
             }
 
-            asr::timer::set_variable_float("Time Trial Timer", time_trial_igt);
+            set_variable_float("Time Trial Timer", time_trial_igt);
             time_trial_state_print_var(time_trial_state);
         }
         TimerMode::TimeTrialMarathon => {
@@ -324,7 +458,7 @@ pub fn update_watchers(
                 watchers
                     .time_trial_bonus_time
                     .update_infallible(time_trial_bonus);
-                asr::timer::set_variable_int("Time Trial Total Bonus", time_trial_bonus);
+                set_variable_int("Time Trial Total Bonus", time_trial_bonus);
             }
 
             let time_trial_igt = addresses
@@ -345,14 +479,14 @@ pub fn update_watchers(
 
             let boss_state = get_boss_state(game, addresses, &level_id);
             watchers.boss_state.update_infallible(boss_state);
-            asr::timer::set_variable_int("Boss State", boss_state);
+            set_variable_int("Boss State", boss_state);
 
             let time_trial_state = time_trial_state_int_to_enum(time_trial_state_raw);
             watchers
                 .time_trial_state
                 .update_infallible(time_trial_state);
 
-            asr::timer::set_variable_float("Time Trial Timer", time_trial_igt);
+            set_variable_float("Time Trial Timer", time_trial_igt);
             time_trial_state_print_var(time_trial_state);
         }
     }
@@ -544,7 +678,7 @@ fn time_trial_state_int_to_enum(time_trial_state_raw: u32) -> TimeTrialState {
 }
 
 fn time_trial_state_print_var(time_trial_state: TimeTrialState) {
-    asr::timer::set_variable(
+    set_variable(
         "Time Trial State",
         match time_trial_state {
             TimeTrialState::None => "None",

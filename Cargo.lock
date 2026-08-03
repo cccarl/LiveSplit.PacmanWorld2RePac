@@ -11,13 +11,12 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 [[package]]
 name = "asr"
 version = "0.1.0"
-source = "git+https://github.com/LiveSplit/asr#52bbcb105d59657920ca21e392135f6a5d808b61"
+source = "git+https://github.com/LiveSplit/asr#a7ecee85abad7263bfa2150d3821f3d2ea69fe84"
 dependencies = [
  "arrayvec",
  "asr-derive",
  "bytemuck",
  "itoa",
- "memchr",
  "ryu",
  "time",
  "wasi",
@@ -26,7 +25,7 @@ dependencies = [
 [[package]]
 name = "asr-derive"
 version = "0.1.0"
-source = "git+https://github.com/LiveSplit/asr#52bbcb105d59657920ca21e392135f6a5d808b61"
+source = "git+https://github.com/LiveSplit/asr#a7ecee85abad7263bfa2150d3821f3d2ea69fe84"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -82,12 +81,6 @@ dependencies = [
  "asr",
  "bytemuck",
 ]
-
-[[package]]
-name = "memchr"
-version = "2.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
 name = "num-conv"
