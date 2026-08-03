@@ -1,7 +1,7 @@
 [package]
 name = "livesplit_pacman_w2_re_pac"
 version = "0.1.0"
-edition = "2021" # change to 2024 later for if let chains :)
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

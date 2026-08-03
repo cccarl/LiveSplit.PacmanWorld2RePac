@@ -4,14 +4,14 @@ mod memory;
 mod stages;
 
 use asr::{
+    Process,
     future::{next_tick, retry},
-    settings::{gui::Title, Gui},
+    settings::{Gui, gui::Title},
     time::Duration,
     timer::{self, TimerState},
     watcher::{Pair, Watcher},
-    Process,
 };
-use memory::{update_watchers, Memory};
+use memory::{Memory, update_watchers};
 use stages::GameStage;
 
 asr::async_main!(stable);
@@ -85,8 +85,7 @@ async fn main() {
                                     timer::reset();
                                 }
                                 timer::start();
-                                // timing starts on difficulty select button press which happens ~0.33s before the menu state changes
-                                timer::set_game_time(Duration::new(0, 333_333_333));
+                                timer::set_game_time(Duration::new(0, 0));
                             }
 
                             // only do level splits if player actually completed the level
@@ -487,12 +486,12 @@ struct Watchers {
     boss_state: Watcher<u32>,
     player_state: Watcher<PlayerState>,
     stage_state: Watcher<StageState>,
-    main_menu_select_ui: Watcher<i32>,
+    main_menu_select_diff_step: Watcher<i32>,
 }
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
-    if let Some(menu_state) = watchers.main_menu_select_ui.pair {
-        return menu_state.current == 0 && menu_state.old == 4 && settings.start_new_game;
+    if let Some(menu_state) = watchers.main_menu_select_diff_step.pair {
+        return menu_state.current > 4 && menu_state.old == 4 && settings.start_new_game;
     } else {
         false
     }
