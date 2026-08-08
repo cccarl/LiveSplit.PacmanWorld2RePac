@@ -160,7 +160,12 @@ impl Memory {
                     .update_infallible(final_step);
 
                 if pair.changed() {
-                    set_variable_int("UI step", pair.current);
+                    set_variable_int("Difficulty UI Step", pair.current);
+                    // force a refresh when the ui stops running, the addresses break when the user goes back to the save file select
+                    if pair.current == 9 {
+                        self.ui_canvas_address.pair = None;
+                        self.ui_canvas_transform_address = None;
+                    }
                 }
             }
         }
@@ -177,6 +182,7 @@ impl Memory {
             return Ok(());
         }
 
+        print_message("Refreshing canvas transform");
         set_variable_int("ui_canvas", canvas_address);
 
         let p = game.read::<u64>(canvas_address + 0x10)?;

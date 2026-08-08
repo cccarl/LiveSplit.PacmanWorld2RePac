@@ -491,7 +491,10 @@ struct Watchers {
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
     if let Some(menu_state) = watchers.main_menu_select_diff_step.pair {
-        return menu_state.current > 4 && menu_state.old == 4 && settings.start_new_game;
+        return menu_state.current > 4
+            && menu_state.current < 7
+            && menu_state.old == 4
+            && settings.start_new_game;
     } else {
         false
     }
